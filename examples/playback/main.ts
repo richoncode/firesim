@@ -1,6 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
+import { probeInputFromSimulation, worldPosition } from '../../src/audio/from-simulation.ts';
+import { controlsFromProbe } from '../../src/audio/mapping.ts';
+import { mountFireAudioPanel } from '../../src/audio/panel.ts';
+import { FireAudioProbe, formatProbeSample } from '../../src/audio/probe.ts';
+import { FireVoice } from '../../src/audio/voice.ts';
 import { FireSimulation, type Emitter, type Explosion } from '../../src/index.ts';
 
 // A configuration exported from the editor (Export → JSON).
@@ -96,8 +101,37 @@ for (const collider of config.colliders) {
 
 await simulation.initialize(renderer);
 
-// Bursts fire once at the start and again on Space.
-const detonate = () => explosions.forEach((explosion) => explosion.trigger());
+// CPU proxies for the voice. The solver is unchanged. Audio stays off until Unmute.
+const probe = new FireAudioProbe();
+const voice = new FireVoice();
+let level = 0.7;
+let logProbe = new URLSearchParams(location.search).has('probe');
+const postVoice = (includeImpulse: boolean) => {
+  const sample = probe.latest;
+  if (!sample) return;
+  voice.setControls(controlsFromProbe(sample, level, includeImpulse));
+};
+mountFireAudioPanel(document.body, {
+  voice,
+  level,
+  floating: true,
+  logInitially: logProbe,
+  hint: 'Level scales the fire’s heat. Zero lets the crackle die out. Mute leaves the simulation running. This preset is the fire tornado.',
+  onLevel: (next) => {
+    level = next;
+    postVoice(false);
+  },
+  onLog: (enabled) => {
+    logProbe = enabled;
+  },
+});
+
+// Bursts fire once at the start and again on Space. The charge is the audio impulse.
+const detonate = () =>
+  explosions.forEach((explosion) => {
+    probe.noteImpulse(explosion.getOptions().charge.heat, worldPosition(explosion.object));
+    explosion.trigger();
+  });
 detonate();
 addEventListener('keydown', (event) => {
   if (event.code === 'Space') detonate();
@@ -113,5 +147,11 @@ renderer.setAnimationLoop((time) => {
   timer.update(time);
   controls.update();
   simulation.update(Math.min(timer.getDelta(), 0.1));
+  // Once per simulated step. A short frame that does not step leaves the last probes in place.
+  const sample = probe.capture(probeInputFromSimulation(simulation, [...emitters.values()]));
+  if (sample) {
+    if (logProbe) console.info(formatProbeSample(sample));
+    postVoice(true);
+  }
   renderer.render(scene, camera);
 });
