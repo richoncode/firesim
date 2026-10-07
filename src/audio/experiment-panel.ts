@@ -44,6 +44,8 @@ export function mountExperimentPanel(
 ): ExperimentPanel {
   ensureStyle();
   const settings = options.settings;
+  // Reset restores this page's starting knobs. Campfire and tornado do not share them.
+  const resetTo: ExperimentSettings = { ...settings };
   const dock = document.createElement('section');
   dock.className = 'fire-experiment';
   dock.setAttribute('aria-label', 'Fire audio experiment');
@@ -271,8 +273,7 @@ export function mountExperimentPanel(
   paintButton();
 
   reset.addEventListener('click', () => {
-    const defaults = defaultExperimentSettings();
-    Object.assign(settings, defaults);
+    Object.assign(settings, resetTo);
     level.set(settings.level);
     countKnob.set(settings.count);
     spacingKnob.set(settings.spacing);
@@ -411,6 +412,24 @@ export function defaultExperimentSettings(level = 0.7): ExperimentSettings {
     showProbes: true,
     level,
     ...FIELD_TUNING_DEFAULTS,
+  };
+}
+
+/** Ear-tuned campfire start. Reset on that page restores this. Tornado keeps `defaultExperimentSettings`. */
+export function campfireExperimentSettings(): ExperimentSettings {
+  return {
+    ...defaultExperimentSettings(0.23),
+    count: 11,
+    spacing: 7,
+    layout: 'vertical',
+    showProbes: true,
+    heatGain: 1,
+    crackleScale: 0.05,
+    pitchVariation: 0.82,
+    volumeVariation: 0.78,
+    roarMix: 0.12,
+    motionInfluence: 0.75,
+    impulseSensitivity: 1,
   };
 }
 

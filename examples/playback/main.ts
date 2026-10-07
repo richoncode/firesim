@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
 import {
+  campfireExperimentSettings,
   defaultExperimentSettings,
   mountExperimentPanel,
 } from '../../src/audio/experiment-panel.ts';
@@ -133,7 +134,7 @@ const anchor = latticeAnchor(
   }),
 );
 const voxelSize = simulation.getOptions().voxelSize;
-const settings = defaultExperimentSettings(0.7);
+const settings = useTornado ? defaultExperimentSettings(0.7) : campfireExperimentSettings();
 let sites = probeLattice(anchor, voxelSize, {
   count: settings.count,
   spacingCells: settings.spacing,
