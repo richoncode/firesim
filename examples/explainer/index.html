@@ -100,6 +100,16 @@
       .credit strong {
         color: #fff;
       }
+      .about-sound {
+        margin-top: 16px;
+      }
+      .about-sound h2 {
+        margin-top: 0;
+        font-size: 1.2rem;
+      }
+      .about-sound cite {
+        font-style: italic;
+      }
       nav ol {
         display: flex;
         flex-wrap: wrap;
@@ -271,12 +281,36 @@
           MIT licensed. Copyright © 2026 Daniel Greenheck. This fork keeps that license, including
           his copyright notice.
         </p>
-        <p>
-          <strong>The sound is an experiment on top of that sim.</strong>
-          It is Richard Bailey’s fork. It does not change how the fire is solved or drawn, except
-          for optional dots that mark where the sound is listening.
-        </p>
       </aside>
+
+      <section class="about-sound" id="experimenter">
+        <h2>About the sound experimenter</h2>
+        <p>
+          The sound on this page is Richard Bailey’s experiment on top of Fire Pro. It does not
+          change how the fire is solved or drawn, except for optional dots that mark where the sound
+          is listening.
+        </p>
+        <p>
+          Richard has long worked on game and spatial audio. He wrote the chapter “Spatial Emphasis
+          of Game Audio: Creating a Theatrically Enhanced Audio Experience” in
+          <a
+            href="https://www.taylorfrancis.com/books/edit/10.1201/9781439864869/audio-anecdotes-iii-ken-greenebaum-ronen-barzel"
+            ><cite>Audio Anecdotes III: Tools, Tips, and Techniques for Digital Audio</cite></a
+          >, edited by Ken Greenebaum and Ronen Barzel (A K Peters, 2007). In it he presents methods
+          he used building the Forza Motorsport audio engine: distorting the aural space, Doppler
+          shifts, and other effects tied to game physics, to create a cinematic, hyperreal
+          experience.
+        </p>
+        <p>
+          His <a href="https://richoncode.github.io/portfolio/#research">portfolio</a> has a Tennis
+          Rally spatial audio demo on the Research tab.
+        </p>
+        <p class="note">
+          A small connection: Perry Cook, whose PhISEM crackle idea this audio borrows, also
+          contributed to the Audio Anecdotes series (“Introduction to Physical Modeling,” Volume 1,
+          2004).
+        </p>
+      </section>
 
       <nav aria-label="On this page">
         <ol>
