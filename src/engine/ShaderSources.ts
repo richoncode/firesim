@@ -1,4 +1,5 @@
 import forceFields from './shaders/force-fields.wgsl?raw';
+import audioProbes from './shaders/audio-probes.wgsl?raw';
 import flameCommon from './shaders/flame-common.wgsl?raw';
 import smoke from './shaders/smoke.wgsl?raw';
 import fluidPressure from './shaders/fluid-pressure-buffers.wgsl?raw';
@@ -40,7 +41,8 @@ export const fluidSource =
   flameCommon +
   fluidCoreSource +
   smoke +
-  forceFields;
+  forceFields +
+  audioProbes;
 
 /** Without scalar correction, only velocity uses donor scratch and needs R32Uint. */
 export const fluidFirstOrderSource = fluidSource.replace(

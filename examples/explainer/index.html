@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>How this fire works</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #121316;
+        --card: #1c1e24;
+        --line: #34363c;
+        --text: #e7e4df;
+        --muted: #b7b3ac;
+        --ember: #e07a3d;
+        --ember-soft: #f0c7a4;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          17px/1.55 ui-sans-serif,
+          system-ui,
+          sans-serif;
+      }
+      main {
+        width: min(42rem, 100%);
+        margin: 0 auto;
+        padding: 28px 18px 72px;
+      }
+      a {
+        color: var(--ember-soft);
+      }
+      a:hover {
+        color: #fff;
+      }
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+      }
+      h1 {
+        font-size: 2rem;
+        margin: 0 0 10px;
+      }
+      h2 {
+        font-size: 1.45rem;
+        margin: 2.4rem 0 0.6rem;
+        scroll-margin-top: 16px;
+      }
+      h3 {
+        font-size: 1.08rem;
+        margin: 1.5rem 0 0.35rem;
+        scroll-margin-top: 16px;
+      }
+      p,
+      li {
+        color: var(--text);
+      }
+      .kicker {
+        margin: 0 0 8px;
+        color: var(--ember);
+        font-size: 0.82rem;
+        font-weight: 650;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .lead {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 1.05rem;
+      }
+      .credit,
+      .card,
+      .defaults {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      .credit p,
+      .card p,
+      .defaults p {
+        margin: 0 0 8px;
+      }
+      .credit p:last-child,
+      .card p:last-child,
+      .defaults p:last-child {
+        margin-bottom: 0;
+      }
+      .credit strong {
+        color: #fff;
+      }
+      .about-sound {
+        margin-top: 16px;
+      }
+      .about-sound h2 {
+        margin-top: 0;
+        font-size: 1.2rem;
+      }
+      .about-sound cite {
+        font-style: italic;
+      }
+      nav ol {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        margin: 16px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      nav a {
+        text-decoration: none;
+      }
+      nav a:hover {
+        text-decoration: underline;
+      }
+      .channels {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin: 12px 0 4px;
+      }
+      .channels div,
+      .layout {
+        background: #15171c;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px;
+      }
+      .channels strong,
+      .layout strong {
+        display: block;
+        color: var(--ember-soft);
+        font-size: 0.92rem;
+      }
+      .channels span,
+      .layout span,
+      figcaption {
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+      .layouts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin: 12px 0;
+      }
+      .dots {
+        display: grid;
+        gap: 6px;
+        justify-content: center;
+        margin: 10px 0 8px;
+        min-height: 72px;
+        align-content: center;
+      }
+      .dots i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--ember);
+        display: block;
+      }
+      .dots.vertical {
+        grid-template-rows: repeat(4, 10px);
+      }
+      .dots.sheet {
+        grid-template-columns: repeat(3, 10px);
+        grid-template-rows: 10px;
+      }
+      .dots.box {
+        grid-template-columns: repeat(2, 10px);
+        grid-template-rows: repeat(3, 10px);
+      }
+      figure {
+        margin: 16px 0;
+      }
+      figcaption {
+        margin-top: 6px;
+      }
+      svg {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      ol.steps {
+        list-style: none;
+        margin: 12px 0;
+        padding: 0;
+      }
+      ol.steps li {
+        position: relative;
+        margin: 0;
+        padding: 0 0 14px 36px;
+      }
+      ol.steps li::before {
+        content: counter(step);
+        counter-increment: step;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2a211c;
+        color: var(--ember-soft);
+        font-size: 0.78rem;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+      }
+      ol.steps {
+        counter-reset: step;
+      }
+      ol.steps strong {
+        color: #fff;
+      }
+      .controls {
+        margin: 8px 0 0;
+        padding-left: 1.1rem;
+      }
+      .controls li {
+        margin: 0 0 8px;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      footer {
+        margin-top: 2.5rem;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      footer p {
+        color: var(--muted);
+      }
+      @media (max-width: 640px) {
+        h1 {
+          font-size: 1.7rem;
+        }
+        .channels,
+        .layouts {
+          grid-template-columns: 1fr;
+        }
+        .channels div {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: baseline;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="kicker">A short tour</p>
+      <h1>How this fire works</h1>
+      <p class="lead">
+        Two stories, told in order. First, the fire you see. Then the sound this experiment adds
+        beside it. No graphics card is required to read this page.
+      </p>
+
+      <aside class="credit">
+        <p>
+          <strong>The fire is Dan Greenheck’s.</strong>
+          Daniel Greenheck (<a href="https://github.com/dgreenheck">dgreenheck</a>) wrote
+          <a href="https://github.com/dgreenheck/threejs-fire-pro">Fire Pro</a>, the real-time fire
+          and smoke simulation this page describes. You can also open
+          <a href="https://dgreenheck.github.io/threejs-fire-pro/">his editor</a>. The project is
+          MIT licensed. Copyright © 2026 Daniel Greenheck. This fork keeps that license, including
+          his copyright notice.
+        </p>
+      </aside>
+
+      <section class="about-sound" id="experimenter">
+        <h2>About the sound experimenter</h2>
+        <p>
+          The sound on this page is Richard Bailey’s experiment on top of Fire Pro. It does not
+          change how the fire is solved or drawn, except for optional dots that mark where the sound
+          is listening.
+        </p>
+        <p>
+          Richard has long worked on game and spatial audio. He wrote the chapter “Spatial Emphasis
+          of Game Audio: Creating a Theatrically Enhanced Audio Experience” in
+          <a
+            href="https://www.taylorfrancis.com/books/edit/10.1201/9781439864869/audio-anecdotes-iii-ken-greenebaum-ronen-barzel"
+            ><cite>Audio Anecdotes III: Tools, Tips, and Techniques for Digital Audio</cite></a
+          >, edited by Ken Greenebaum and Ronen Barzel (A K Peters, 2007). In it he presents methods
+          he used building the Forza Motorsport audio engine: distorting the aural space, Doppler
+          shifts, and other effects tied to game physics, to create a cinematic, hyperreal
+          experience.
+        </p>
+        <p>
+          More of his work is on his
+          <a href="https://richoncode.github.io/portfolio/">portfolio</a>.
+        </p>
+        <p class="note">
+          A fun connection: Perry Cook, whose work on synthesized sound inspired the crackles here,
+          wrote “Introduction to Physical Modeling” for the first Audio Anecdotes volume, the same
+          series Richard later wrote for. Years before his Xbox spatial audio work, Richard read
+          Cook’s book
+          <a
+            href="https://www.routledge.com/Real-Sound-Synthesis-for-Interactive-Applications/Cook/p/book/9781568811680"
+            ><cite>Real Sound Synthesis for Interactive Applications</cite></a
+          >
+          (A K Peters, 2002). What stuck with him was its idea of sampling energy at a few points
+          and turning that into sound, and it’s why this experiment listens to the fire through a
+          handful of probes.
+        </p>
+      </section>
+
+      <nav aria-label="On this page">
+        <ol>
+          <li><a href="#sim">How the fire simulation works</a></li>
+          <li><a href="#sound">How the sound extends it</a></li>
+          <li><a href="#controls">The campfire controls</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="sim">How the fire simulation works</h2>
+      <p>
+        Fire Pro runs entirely on the graphics chip. Each frame it advances a blob of hot air, then
+        draws it by walking a ray through that air for every pixel.
+      </p>
+
+      <h3>A grid that only exists where the fire is</h3>
+      <p>
+        The world is divided into little cubes called cells. Campfire cells are 5&nbsp;cm on a side.
+        The computer does not allocate a giant solid block of them. It groups cells into bricks (8,
+        16, or 32 cells along each side) and only gives a brick memory when an emitter, or flame,
+        smoke, or fuel already there, needs it. Empty air costs nothing. The ground is a floor at
+        height zero. Nothing is simulated below it. Solid objects block the flow.
+      </p>
+      <p>
+        Time moves in fixed bites of one sixtieth of a second. A frame takes at most one bite. If
+        the frame was slower than that, the leftover time is dropped and the fire simply runs slow,
+        instead of taking a huge jump.
+      </p>
+
+      <h3>What a cell remembers</h3>
+      <p>
+        Each flame cell holds four numbers. Heat here is a relative amount, not a thermometer
+        reading in degrees. A separate grid can hold the wind, and the pressure used to keep that
+        wind from piling air up. Wind and pressure may use coarser cells than the flame.
+      </p>
+      <div class="channels" aria-label="The four numbers stored in a flame cell">
+        <div><strong>Smoke</strong><span>haze, or this step’s new smoke</span></div>
+        <div><strong>Heat</strong><span>how hot, on the sim’s own scale</span></div>
+        <div><strong>Flame life</strong><span>how much flame is left, from 0 to 1</span></div>
+        <div><strong>Fuel</strong><span>unburned fuel. Never drawn.</span></div>
+      </div>
+      <p class="note">
+        When smoke uses a coarser grid, as the campfire does (smoke cells twice as wide), the haze
+        you see lives on that coarser grid. The fine cell’s smoke slot then only stages the smoke
+        produced this step.
+      </p>
+
+      <h3>One step, in the order the code actually runs it</h3>
+      <p>
+        “Advection” means carrying a value along the wind. “MacCormack” is a second pass that
+        sharpens what that carry smeared. The wind itself is stored on the faces of each cell, not
+        at the center, so flow into one face is flow out of the next. People call that a staggered,
+        or MAC, grid.
+      </p>
+      <ol class="steps">
+        <li>
+          <strong>Make room.</strong>
+          Decide which bricks are active. A brand-new source gets slots in this same step. Bricks
+          that just appeared, and bricks that stopped computing, are cleared to still, empty air.
+        </li>
+        <li>
+          <strong>Carry the wind, then sharpen it.</strong>
+          Move the wind along itself. The path is a short curve (a two-stage trace). A bounded
+          MacCormack pass then corrects the blur. Open air flowing in is still air, not a copy of
+          whatever just left.
+        </li>
+        <li>
+          <strong>Carry heat, smoke, flame, and fuel, then let them change.</strong>
+          Scalars take the same kind of trip, with MacCormack on by default (it can be turned off,
+          which leaves a blurrier first-order carry). Emitters and mesh sources add flame lifetime,
+          smoke, heat, and fuel. If fuel is enabled and the cell is at least as hot as the ignition
+          heat, fuel burns into flame — its amount, capped at 1, becomes the flame’s lifetime — and
+          the gas expands as it burns. The flame’s own curve adds more heat, smoke, and expansion.
+          Heat cools and smoke thins by a smooth exponential fade. A cell that was not just
+          refilled, has no flame left, and has dropped below a tiny cutoff (0.001) is cleared.
+        </li>
+        <li>
+          <strong>Update coarse smoke, when the scene uses it.</strong>
+          The campfire does. That haze is carried and faded on its own coarser grid.
+        </li>
+        <li>
+          <strong>Measure the swirl, if the scene asked for it.</strong>
+          Swirl (vorticity) is how much the air is spinning. It is computed from the wind with
+          central differences, and only when the vorticity setting is not zero. It is not a field
+          the sim keeps around. A debug view that colors swirl computes it again just for the
+          picture.
+        </li>
+        <li>
+          <strong>Push.</strong>
+          Forces are worked out at cell centers, then averaged onto the faces. Hot air rises:
+          buoyancy times heat, upward. Smoke pulls downward. Vorticity confinement adds a small
+          shove across the swirl so little eddies do not die out. Wind, turbulence, a vortex, or a
+          radial push placed in the scene is added here too. The wind is then faded a bit (velocity
+          damping) and this step’s push is added. Faces on a solid are set to zero. An emitter can
+          also blend in a velocity it asked for.
+        </li>
+        <li>
+          <strong>See where air is piling up.</strong>
+          That pile-up is the divergence. The expansion the flame and the burning fuel already asked
+          for is subtracted, so the pressure solve is allowed to keep that expansion.
+        </li>
+        <li>
+          <strong>Solve for pressure.</strong>
+          A few multigrid passes: a coarse version of the problem first, then a finer one. Each step
+          starts from zero pressure rather than last frame’s answer.
+        </li>
+        <li>
+          <strong>Project.</strong>
+          Subtract the pressure change across each face. After this, the wind piles up only as much
+          as the expansion allowed. Cells inside a solid are set to still.
+        </li>
+      </ol>
+      <p>
+        After that, the sim copies a count of active bricks back for the on-screen stats. That count
+        lags the picture slightly. The sound, described below, is a separate optional read. It is
+        not one of these steps, and it never writes the fire.
+      </p>
+
+      <h3>How you see it</h3>
+      <figure>
+        <svg
+          viewBox="0 0 420 150"
+          role="img"
+          aria-label="A ray from the camera stepping through boxes of fire bricks."
+        >
+          <rect width="420" height="150" fill="#15171c" rx="12" />
+          <circle cx="36" cy="78" r="8" fill="#e7e4df" />
+          <text
+            x="22"
+            y="108"
+            fill="#b7b3ac"
+            font-size="12"
+            font-family="ui-sans-serif, system-ui, sans-serif"
+          >
+            camera
+          </text>
+          <path
+            d="M44 78 C 120 78, 160 60, 250 48"
+            fill="none"
+            stroke="#f0c7a4"
+            stroke-width="2"
+            stroke-dasharray="4 4"
+          />
+          <rect x="168" y="34" width="70" height="52" fill="none" stroke="#5c5a55" />
+          <rect x="246" y="22" width="78" height="64" fill="none" stroke="#5c5a55" />
+          <rect x="180" y="48" width="18" height="18" fill="#e07a3d" opacity="0.85" />
+          <rect x="262" y="40" width="18" height="18" fill="#e07a3d" opacity="0.55" />
+          <rect x="284" y="40" width="18" height="18" fill="#e07a3d" opacity="0.35" />
+          <text
+            x="168"
+            y="118"
+            fill="#b7b3ac"
+            font-size="12"
+            font-family="ui-sans-serif, system-ui, sans-serif"
+          >
+            boxes of bricks, about half a cell per step
+          </text>
+        </svg>
+        <figcaption>
+          Each pixel sends a ray through the boxes that hold bricks. Steps are about half a cell,
+          jittered so the samples do not line up into bands.
+        </figcaption>
+      </figure>
+      <p>
+        Fuel is stored but never drawn. A flame glows at full strength until the last fifth of its
+        lifetime, then fades out with it. Smoke and flame both darken the ray. The glow uses that
+        same darkness (Kirchhoff’s idea: a thing that emits also absorbs), so a thick flame blocks
+        what is behind it instead of painting light on top of light.
+      </p>
+      <p>
+        Color comes from heat only at display time. The sim’s heat is turned into a color
+        temperature: 800&nbsp;kelvin plus a fraction of the way toward the temperature the artist
+        set. The fraction is heat ÷ (heat + 2), so it levels off instead of climbing forever. That
+        temperature is looked up in a blackbody table covering about 500 to 10,000&nbsp;kelvin — the
+        familiar dull red to white-hot ramp. An artist tint can replace the hue. White keeps the
+        natural spectrum.
+      </p>
+      <p>
+        Smoke can scatter light, including light from the scene. The flame itself absorbs and emits.
+        It does not scatter the room light. A separate pass turns the flame into lights for nearby
+        surfaces. That lighting is only for the picture. It does not drive the sound.
+      </p>
+
+      <h2 id="sound">How the sound extends it</h2>
+      <p>
+        The voice is a separate program on the audio clock (a Web Audio worklet). It never reads
+        graphics memory itself. Playback hands it a small set of numbers after each simulated step.
+        Until you click Unmute, or press U, the context is not even started, so the page is silent.
+        Mute turns the output down to nothing and leaves the fire running.
+      </p>
+      <p>
+        The editor does not run this voice. The
+        <a href="../audio/">slider example</a> has no fire grid either: its Level knob is the
+        energy, all by itself, in mono. The campfire you hear on
+        <a href="../playback/">playback</a> is the stereo version below.
+      </p>
+
+      <h3>A few listening posts</h3>
+      <p>
+        The sound does not listen to every cell, and it does not trace the flame front. It reads a
+        handful of fixed probes, 4 to 32 of them. Each probe looks at one flame cell for heat, and
+        at that spot’s wind cell plus its six neighbors for motion.
+        <a href="#experimenter">Why probes? See About the sound experimenter.</a>
+      </p>
+      <ul>
+        <li><strong>Heat</strong> is that one cell’s heat.</li>
+        <li>
+          <strong>Speed</strong> is the fastest wind in that little neighborhood, in meters per
+          second.
+        </li>
+        <li>
+          <strong>Swirl</strong> is the spin in that same neighborhood, measured the same way as the
+          vorticity debug view. The number is a rate per second.
+        </li>
+        <li>
+          <strong>Live</strong> means the brick actually has memory. An empty probe reports zeros.
+        </li>
+      </ul>
+      <p>The pass only reads. It does not write heat, wind, or anything else in the sim.</p>
+
+      <h3>Three small read buffers</h3>
+      <p>
+        Copying numbers off the graphics chip can stall a frame if you wait for them. Playback does
+        not wait. It copies the probe results into one of three map-read buffers and asks the
+        browser to map that buffer later. The animation frame moves on. When the map finishes, a
+        later frame picks the numbers up, so the voice is always at least one step behind the
+        picture. If all three buffers are still busy, that step is skipped and the voice keeps the
+        last values it heard. Changing the probe count throws those buffers away and starts clean,
+        so an old map of the wrong size is ignored.
+      </p>
+
+      <h3>A short smooth, then a voice</h3>
+      <p>
+        Heat, speed, and swirl are eased with a filter about six hundredths of a second long, so one
+        jumpy reading does not jab the speaker. The first reading is used immediately. Whether a
+        probe is live is not smoothed. A sudden rise in the <em>unsmoothed</em> heat can still add a
+        pop: at the default impulse setting, a rise of about 0.35 heat units is enough, and a bigger
+        rise (toward 1.5 units) makes a bigger pop.
+      </p>
+      <p>
+        Playback is stereo. Each probe keeps its own crackle. One shared roar sits underneath, taken
+        from the average energy of the probes that are actually burning. Quiet probes are left out
+        of that average so empty air does not thin the bed. When a probe gets hotter, its energy
+        approaches the new level at about 8 per second, so a plume that reaches the next probe still
+        sounds like a new onset. It falls at the fire’s cooling rate, and never slower than 0.35 per
+        second, so turning Level to zero still fades out. The fade uses the scene’s cooling setting
+        plus a tenth of its smoke dissipation, from the CPU side, not a measurement inside each
+        probe.
+      </p>
+      <p>
+        The roar is leaked noise through a low-pass filter. Hotter, more restless probes open the
+        filter. Smoke darkens it. That smoke is a stand-in from how fast the scene is
+        <em>emitting</em> smoke, shared by the whole voice, not a density read at the probe.
+      </p>
+      <p>
+        The crackle is inspired by Perry Cook’s PhISEM idea (random, Poisson-timed bursts). In this
+        voice, collision times are a Poisson process, which means random pops with a chosen average
+        rate, like raindrops. The rate grows with the square of the probe’s energy, so a quiet probe
+        pops rarely and a hot one crackles. Each pop is a short burst of noise (the burst fades in
+        about 20&nbsp;ms) through three bandpass filters: a low one near 300&nbsp;Hz, a middle one
+        near 1.5–2.2&nbsp;kHz, and a high one near 3.4–4.3&nbsp;kHz. They brighten a little as
+        energy rises. Cook wrote the idea up as Physically Informed Sonic Modeling (PhISM) in
+        <a href="https://doi.org/10.2307/3681012">Computer Music Journal, 1997</a>. His notes live
+        on <a href="https://www.cs.princeton.edu/~prc/">his Princeton page</a>.
+      </p>
+      <p>
+        Letting a live fire drive a synthesizer, rather than playing a recording, is the spirit of
+        Jeffrey Chadwick and Doug James,
+        <a href="https://www.cs.cornell.edu/projects/Sound/fire/">Animating Fire with Sound</a>
+        (SIGGRAPH 2011;
+        <a href="https://dl.acm.org/doi/10.1145/1964921.1964979">ACM</a>). This fork does not
+        implement their combustion-sound model. The voice here is the crackle plus the filtered
+        roar, driven by these few probes.
+      </p>
+
+      <h3>From a reading to a sound</h3>
+      <p>For each live probe, after smoothing:</p>
+      <ul>
+        <li>
+          <strong>Loudness of that probe</strong> is its heat times heat gain, compared with 2 (a
+          hot campfire cell, not the top of the heat debug scale, which runs 0–4), then multiplied
+          by Level. If the sim has run out of brick memory, that result is multiplied by 0.55,
+          matching cells the picture already dropped. Level 0 forces this, and any pop, to zero.
+        </li>
+        <li>
+          <strong>Motion</strong> mixes speed and swirl: 35% from speed (full at 4&nbsp;m/s) and 65%
+          from swirl (full at 50 per second). The Motion knob decides how much that mix matters. At
+          75%, a still probe keeps a quarter of its crackle rate, and motion raises the rest. At
+          100%, a still probe can go quiet.
+        </li>
+        <li>
+          <strong>Crackle rate</strong> starts from 70 pops a second at full energy, times the
+          crackle-rate knob, times energy squared, times the motion factor above. The knob only goes
+          up to 0.5. Campfire’s 0.05 means a fully hot probe crackles a few times a second, not a
+          storm.
+        </li>
+        <li>
+          <strong>Pitch variation</strong> retunes that pop’s three filters. 0% keeps the centers
+          fixed. 100% is up to an octave either way. The new pitch is chosen per pop.
+        </li>
+        <li>
+          <strong>Volume variation</strong> changes how hard each pop hits. 100% is the original
+          spread, from a soft tap to a full hit. Lower pulls the hits toward the middle. Pops from a
+          heat jump use a fixed hit, not this spread.
+        </li>
+        <li>
+          <strong>Roar mix</strong> crossfades the shared roar against all the crackles. The middle,
+          50%, keeps them in balance. Toward 0 you mostly hear crackle. Toward 100% you mostly hear
+          roar.
+        </li>
+        <li>
+          <strong>Stereo.</strong> Each crackle pans from its own left-right position. About
+          60&nbsp;cm of world X is a hard pan. The roar pans to the energy-weighted average of the
+          burning probes, so a balanced fire stays centered.
+        </li>
+      </ul>
+      <p>
+        More probes add more crackle. They are not turned down to compensate. Level is the master.
+      </p>
+
+      <h3>Where the probes sit</h3>
+      <p>
+        Neighbors are a chosen number of cells apart, at least 2, so they never share an edge. Each
+        one sits on a cell center. The anchor is the fire: across the emitters, at the lowest
+        emitter. Rebuilding the layout (count, spacing, or shape) forgets the smoother, so old cells
+        do not bleed into the new ones.
+      </p>
+      <div class="layouts">
+        <div class="layout">
+          <div class="dots vertical" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <strong>Vertical</strong>
+          <span>One column on the fire, stepping up. Campfire starts here.</span>
+        </div>
+        <div class="layout">
+          <div class="dots sheet" aria-hidden="true"><i></i><i></i><i></i></div>
+          <strong>Horizontal</strong>
+          <span>One sheet at the emitter’s height. A prime count becomes a line across.</span>
+        </div>
+        <div class="layout">
+          <div class="dots box" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <strong>Box</strong>
+          <span>Extra probes go upward. Sixteen probes is 2×4×2. This is the tornado start.</span>
+        </div>
+      </div>
+      <p>
+        The line in the dock names the shape. Campfire opens as “Vertical 1×11×1, 70 cells up”:
+        eleven probes, seven cells apart, so seventy cells from the lowest to the highest (about
+        3.5&nbsp;m on these 5&nbsp;cm cells). Horizontal would say “on the emitter”. A box of
+        sixteen probes at spacing 6, which is what Box and the tornado page use, reads “Box 2×4×2,
+        18 cells up”.
+      </p>
+      <p class="note">
+        Odd box counts collapse to a single column. Even counts that are not a multiple of four are
+        a vertical sheet, two probes wide. Horizontal splits the count into the closest rectangle
+        that is at least as wide as it is deep.
+      </p>
+
+      <h2 id="controls">The campfire controls</h2>
+      <div class="defaults">
+        <p>
+          <strong>Campfire starts muted</strong>, on this ear-tuned setup. Reset on that page puts
+          these back:
+        </p>
+        <p>
+          Level 23%. Vertical. 11 probes. Spacing 7. Heat gain 1.00×. Crackle rate 0.05×. Crackle
+          pitch variation 82%. Crackle volume variation 78%. Roar mix 12% roar. Motion 75%. Impulse
+          1.00×. Probe markers on.
+        </p>
+        <p class="note">
+          The tornado playback (<code>?preset=tornado</code>) uses the same dock with its own start:
+          Level 70%, Box, 16 probes, spacing 6, crackle rate 0.50×, pitch variation 0%, volume
+          variation 100%, roar mix 50%, motion 75%, impulse 1.00×, markers on. Reset there restores
+          that set, not the campfire one.
+        </p>
+      </div>
+      <ul class="controls">
+        <li>
+          <strong>Unmute / U.</strong> Starts the audio. The button becomes Mute, which cuts the
+          output and leaves the fire running. The page is silent until that click or key.
+        </li>
+        <li>
+          <strong>Level.</strong> Master on every probe. Zero stops adding energy, and each crackle
+          dies out at the cooling rate.
+        </li>
+        <li>
+          <strong>Probe layout, Probes, Spacing.</strong> Horizontal, Vertical, or Box; how many
+          (4–32); how many cells apart (2–16). Any of these rebuilds the lattice. The shape line
+          above them is the result.
+        </li>
+        <li>
+          <strong>Heat gain</strong> (0.25×–4×). Multiplies heat before comparing it with 2. 1.00×
+          is unchanged.
+        </li>
+        <li>
+          <strong>Crackle rate</strong> (0–0.50×). Multiplies how often pops happen. It does not
+          change the roar.
+        </li>
+        <li>
+          <strong>Crackle pitch variation</strong> and <strong>crackle volume variation</strong>.
+          Per pop, as above. They do not retune the roar.
+        </li>
+        <li>
+          <strong>Roar mix.</strong> Crackle on the left of the slider, roar on the right. The label
+          says “crackle”, “roar”, or a percent such as “12% roar”.
+        </li>
+        <li>
+          <strong>Motion.</strong> How much speed and swirl raise the crackle rate and brighten the
+          roar. 75% is the campfire start.
+        </li>
+        <li>
+          <strong>Impulse</strong> (off, or up to 3×). How sensitive pops are to a sudden heat rise.
+          Off disables them. The space bar still detonates bursts in the picture, but the voice does
+          not take a separate pop from the key. Campfire has no burst emitters, so it stays on the
+          probes.
+        </li>
+        <li>
+          <strong>Show probe positions.</strong> Draws a small sphere at each probe. They are
+          markers only, not colliders and not fuel. Turn them off and the picture matches the
+          original sim. They start on.
+        </li>
+        <li>
+          <strong>The energy strip</strong> under the knobs is what the probes last heard, after
+          smoothing. On the vertical campfire, left is the emitter and right is the top. On a box,
+          the bottom row is the emitter. On a horizontal sheet, each row is a line across the fire.
+        </li>
+        <li><strong>Reset</strong> restores the start listed above for the page you are on.</li>
+        <li>
+          <strong>Log probe</strong> (or <code>?probe=1</code>) prints a CPU-side summary and one
+          heat line per completed map. That log is for tinkering. The voice is driven by the probe
+          readings, not by that summary’s heat total.
+        </li>
+      </ul>
+
+      <footer>
+        <p>
+          <a href="../playback/">Back to the campfire</a>
+          · <a href="../audio/">Slider-only voice</a> ·
+          <a href="https://github.com/dgreenheck/threejs-fire-pro">Fire Pro on GitHub</a>
+        </p>
+        <p>
+          Simulation by Daniel Greenheck, MIT License, Copyright © 2026 Daniel Greenheck. Audio
+          experiment by Richard Bailey.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

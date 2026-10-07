@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Fire voice · Fire Pro</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #15161a;
+        color: #e7e4df;
+        font:
+          16px/1.5 ui-sans-serif,
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 38rem;
+        margin: 0 auto;
+        padding: 48px 20px 64px;
+      }
+      h1 {
+        font-size: 1.6rem;
+        font-weight: 650;
+        letter-spacing: -0.03em;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 12px;
+        color: #b7b3ac;
+      }
+      a {
+        color: #e7e4df;
+      }
+      #audio {
+        margin-top: 28px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Fire voice</h1>
+      <p>
+        A roar and a crackle, synthesized in the browser. Nothing is sampled from a recording. The
+        simulation on the playback page is Daniel Greenheck’s Fire Pro. This page has no simulation:
+        the slider is the fire.
+      </p>
+      <p>
+        Unmute first. Browsers block audio until a click or a key. Return Level to zero and the
+        crackle dies out. U toggles mute.
+      </p>
+      <p>
+        <a href="../explainer/">How this works →</a>
+        A plain-language tour of the fire simulation and this voice. The campfire, with both
+        together, is on the <a href="../playback/">playback page</a>.
+      </p>
+      <div id="audio"></div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
