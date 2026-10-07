@@ -8,7 +8,7 @@ The simulation is Daniel Greenheck's [Fire Pro](https://github.com/dgreenheck/th
 
 ## How to hear it
 
-No sampled fire recordings. The editor does not run the voice.
+No sampled fire recordings. The editor does not run the voice. A plain-language tour of the solver and this voice, with no WebGPU required, is [How this works](examples/explainer/index.html). The playback dock links to it above Unmute.
 
 ```sh
 npm install

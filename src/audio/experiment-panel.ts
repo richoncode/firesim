@@ -50,6 +50,15 @@ export function mountExperimentPanel(
   dock.className = 'fire-experiment';
   dock.setAttribute('aria-label', 'Fire audio experiment');
 
+  const explainer = document.createElement('p');
+  explainer.className = 'fire-experiment-explainer';
+  const explainerLink = document.createElement('a');
+  explainerLink.href = '../explainer/';
+  explainerLink.target = '_blank';
+  explainerLink.rel = 'noopener';
+  explainerLink.textContent = 'How this works →';
+  explainer.append(explainerLink);
+
   const credit = document.createElement('p');
   credit.className = 'fire-experiment-credit';
   credit.textContent = 'Synthesized fire. The simulation is Daniel Greenheck’s Fire Pro.';
@@ -227,7 +236,7 @@ export function mountExperimentPanel(
     motionKnob.root,
     impulseKnob.root,
   );
-  dock.append(credit, row, level.root, knobs, markers, reset, hud, hint);
+  dock.append(explainer, credit, row, level.root, knobs, markers, reset, hud, hint);
   if (options.onLog) {
     const logLabel = document.createElement('label');
     logLabel.className = 'fire-experiment-check fire-experiment-log';
@@ -511,6 +520,11 @@ function ensureStyle(): void {
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
       overflow: auto;
     }
+    .fire-experiment-explainer { margin: 0; }
+    .fire-experiment-explainer a {
+      color: #e7e4df; font-weight: 650; text-decoration: none;
+    }
+    .fire-experiment-explainer a:hover { text-decoration: underline; }
     .fire-experiment-credit, .fire-experiment-hint, .fire-experiment-shape,
     .fire-experiment-summary { margin: 0; color: #b7b3ac; }
     .fire-experiment-hint { margin-top: 2px; }
