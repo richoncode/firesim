@@ -149,7 +149,7 @@ export function mountExperimentPanel(
       options.onChange(settings, 'audio');
     },
   });
-  const pitchKnob = knob('Pitch variation', {
+  const pitchKnob = knob('Crackle pitch variation', {
     min: 0,
     max: 1,
     step: 0.01,
@@ -160,7 +160,7 @@ export function mountExperimentPanel(
       options.onChange(settings, 'audio');
     },
   });
-  const volumeKnob = knob('Volume variation', {
+  const volumeKnob = knob('Crackle volume variation', {
     min: 0,
     max: 1,
     step: 0.01,
@@ -451,6 +451,8 @@ function ensureStyle(): void {
       display: flex; flex-direction: column; gap: 2px; color: #b7b3ac;
     }
     .fire-experiment label span { display: flex; justify-content: space-between; gap: 8px; }
+    .fire-experiment label span > span:first-child { min-width: 0; }
+    .fire-experiment label span > span:last-child { flex: none; white-space: nowrap; }
     .fire-experiment input[type="range"] { width: 100%; margin: 0; }
     .fire-experiment-check { display: flex; align-items: center; gap: 6px; color: #e7e4df; }
     .fire-experiment-hud { display: flex; flex-direction: column; gap: 4px; }
