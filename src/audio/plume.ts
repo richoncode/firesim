@@ -1,6 +1,13 @@
 import { AUDIO_PROBE_MAX } from '../engine/audioProbes.ts';
-import type { PlumeControls } from './mapping.ts';
-import { Biquad } from './phisem.ts';
+import { CRACKLE_SCALE_MAX, type PlumeControls } from './mapping.ts';
+import {
+  Biquad,
+  crackleAmplitude,
+  cracklePitchRatio,
+  PITCH_VARIATION_DEFAULT,
+  resonantFrequency,
+  VOLUME_VARIATION_DEFAULT,
+} from './phisem.ts';
 
 const ATTACK = 8;
 const CRACKLE_RATE = 70;
@@ -21,9 +28,11 @@ export class PlumeVoice {
   private readonly roar: RoarBed;
   private cooling = 1;
   private smoke = 0;
-  private crackleScale = 1;
+  private crackleScale = CRACKLE_SCALE_MAX;
   private roarMix = 0.5;
   private motionInfluence = 0.75;
+  private pitchVariation = PITCH_VARIATION_DEFAULT;
+  private volumeVariation = VOLUME_VARIATION_DEFAULT;
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate > 0 ? sampleRate : 48000;
@@ -34,9 +43,15 @@ export class PlumeVoice {
   setControls(controls: PlumeControls): void {
     this.cooling = Math.max(0.05, finite(controls.cooling, 1));
     this.smoke = clamp01(finite(controls.smoke, 0));
-    this.crackleScale = clampRange(finite(controls.crackleScale, 1), 0, 4);
+    this.crackleScale = clampRange(
+      finite(controls.crackleScale, CRACKLE_SCALE_MAX),
+      0,
+      CRACKLE_SCALE_MAX,
+    );
     this.roarMix = clamp01(finite(controls.roarMix, 0.5));
     this.motionInfluence = clamp01(finite(controls.motionInfluence, 0.75));
+    this.pitchVariation = clamp01(finite(controls.pitchVariation, PITCH_VARIATION_DEFAULT));
+    this.volumeVariation = clamp01(finite(controls.volumeVariation, VOLUME_VARIATION_DEFAULT));
     const probes = Array.isArray(controls.probes) ? controls.probes : [];
     for (let i = 0; i < this.probes.length; i++) {
       const probe = probes[i];
@@ -84,6 +99,8 @@ export class PlumeVoice {
           this.cooling,
           this.crackleScale,
           this.motionInfluence,
+          this.pitchVariation,
+          this.volumeVariation,
         );
         crackleLeft += sample.left;
         crackleRight += sample.right;
@@ -134,6 +151,8 @@ class ProbeCrackle {
   private leftGain = Math.SQRT1_2;
   private rightGain = Math.SQRT1_2;
   private tuned = -1;
+  private tunedRatio = -1;
+  private eventRatio = 1;
   private appliedPan = Number.NaN;
 
   constructor(sampleRate: number) {
@@ -151,10 +170,13 @@ class ProbeCrackle {
     cooling: number,
     crackleScale: number,
     motionInfluence: number,
+    pitchVariation: number,
+    volumeVariation: number,
   ): { left: number; right: number } {
     if (this.impulse > 0) {
       this.energy = Math.min(1.5, this.energy + this.impulse);
       this.envelope += 0.85 * Math.min(1, this.impulse);
+      this.eventRatio = cracklePitchRatio(pitchVariation);
       this.impulse = 0;
     }
     const target = this.drive / cooling;
@@ -166,7 +188,8 @@ class ProbeCrackle {
     const follow = 1 - motionInfluence + motionInfluence * this.motion;
     const rate = CRACKLE_RATE * crackleScale * unit * unit * Math.max(0, follow);
     if (rate > 0 && Math.random() < 1 - Math.exp(-rate * dt)) {
-      this.envelope += 0.35 + 0.65 * Math.random();
+      this.envelope += crackleAmplitude(volumeVariation);
+      this.eventRatio = cracklePitchRatio(pitchVariation);
     }
     this.envelope *= this.envelopeDecay;
     if (this.envelope < 1e-6) this.envelope = 0;
@@ -183,12 +206,15 @@ class ProbeCrackle {
 
   private retune(unit: number): void {
     const bucket = Math.round(unit * 16);
-    if (bucket === this.tuned) return;
+    const ratioBucket = Math.round(this.eventRatio * 256);
+    if (bucket === this.tuned && ratioBucket === this.tunedRatio) return;
     this.tuned = bucket;
+    this.tunedRatio = ratioBucket;
     const shaped = bucket / 16;
-    this.low.setBandpass(280 + 80 * shaped, 0.8);
-    this.mid.setBandpass(1500 + 700 * shaped, 3.2);
-    this.high.setBandpass(3400 + 900 * shaped, 4.5);
+    const ratio = this.eventRatio;
+    this.low.setBandpass(resonantFrequency(280 + 80 * shaped, ratio), 0.8);
+    this.mid.setBandpass(resonantFrequency(1500 + 700 * shaped, ratio), 3.2);
+    this.high.setBandpass(resonantFrequency(3400 + 900 * shaped, ratio), 4.5);
   }
 
   private applyPan(): void {

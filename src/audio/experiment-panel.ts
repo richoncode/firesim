@@ -7,7 +7,7 @@ import {
   PROBE_SPACING_MAX,
   PROBE_SPACING_MIN,
 } from './lattice.ts';
-import { FIELD_TUNING_DEFAULTS, type FieldTuning } from './mapping.ts';
+import { CRACKLE_SCALE_MAX, FIELD_TUNING_DEFAULTS, type FieldTuning } from './mapping.ts';
 import type { ProbeHudSample } from './panel.ts';
 import type { FireVoice } from './voice.ts';
 
@@ -140,12 +140,34 @@ export function mountExperimentPanel(
   });
   const crackleKnob = knob('Crackle rate', {
     min: 0,
-    max: 3,
-    step: 0.05,
+    max: CRACKLE_SCALE_MAX,
+    step: 0.01,
     value: settings.crackleScale,
     format: (value) => `${value.toFixed(2)}×`,
     onInput: (value) => {
       settings.crackleScale = value;
+      options.onChange(settings, 'audio');
+    },
+  });
+  const pitchKnob = knob('Pitch variation', {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    value: settings.pitchVariation,
+    format: percent,
+    onInput: (value) => {
+      settings.pitchVariation = value;
+      options.onChange(settings, 'audio');
+    },
+  });
+  const volumeKnob = knob('Volume variation', {
+    min: 0,
+    max: 1,
+    step: 0.01,
+    value: settings.volumeVariation,
+    format: percent,
+    onInput: (value) => {
+      settings.volumeVariation = value;
       options.onChange(settings, 'audio');
     },
   });
@@ -188,6 +210,8 @@ export function mountExperimentPanel(
     spacingKnob.root,
     heatKnob.root,
     crackleKnob.root,
+    pitchKnob.root,
+    volumeKnob.root,
     roarKnob.root,
     motionKnob.root,
     impulseKnob.root,
@@ -245,6 +269,8 @@ export function mountExperimentPanel(
     spacingKnob.set(settings.spacing);
     heatKnob.set(settings.heatGain);
     crackleKnob.set(settings.crackleScale);
+    pitchKnob.set(settings.pitchVariation);
+    volumeKnob.set(settings.volumeVariation);
     roarKnob.set(settings.roarMix);
     motionKnob.set(settings.motionInfluence);
     impulseKnob.set(settings.impulseSensitivity);

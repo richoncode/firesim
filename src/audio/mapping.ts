@@ -10,6 +10,10 @@ export interface VoiceControls {
   smoke: number;
   /** One-shot energy added on this message, then forgotten. */
   impulse: number;
+  /** 0–1. Per-crackle randomization of resonator pitch. Omitted on the slider page. */
+  pitchVariation?: number;
+  /** 0–1. Per-crackle randomization of burst amplitude. Omitted on the slider page. */
+  volumeVariation?: number;
 }
 
 /**
@@ -102,8 +106,12 @@ export interface PlumeControls {
   probes: ProbeVoiceControl[];
   cooling: number;
   smoke: number;
-  /** Multiplies the crackle event rate. 1 is the default. */
+  /** Multiplies the crackle event rate. 0.5 is the maximum and the default. */
   crackleScale: number;
+  /** 0–1. Each crackle retunes the resonators. 0 keeps the fixed centers. */
+  pitchVariation: number;
+  /** 0–1. Each crackle's burst size. 1 is the original 0.35–1 span. */
+  volumeVariation: number;
   /** 0 is crackle only, 1 is roar only, 0.5 keeps the default balance. */
   roarMix: number;
   /**
@@ -112,6 +120,9 @@ export interface PlumeControls {
    */
   motionInfluence: number;
 }
+
+/** Top of the playback crackle-rate slider. Half of the original 1× Poisson scale. */
+export const CRACKLE_SCALE_MAX = 0.5;
 
 /** Knobs on the playback experiment panel. Omitted fields use these defaults. */
 export interface FieldTuning {
@@ -122,14 +133,18 @@ export interface FieldTuning {
   impulseSensitivity: number;
   crackleScale: number;
   roarMix: number;
+  pitchVariation: number;
+  volumeVariation: number;
 }
 
 export const FIELD_TUNING_DEFAULTS: FieldTuning = {
   heatGain: 1,
   motionInfluence: 0.75,
   impulseSensitivity: 1,
-  crackleScale: 1,
+  crackleScale: CRACKLE_SCALE_MAX,
   roarMix: 0.5,
+  pitchVariation: 0,
+  volumeVariation: 1,
 };
 
 /**
@@ -156,8 +171,12 @@ export function controlsFromField(
   const heatGain = positive(tuning?.heatGain, FIELD_TUNING_DEFAULTS.heatGain);
   const motionInfluence = clamp01(tuning?.motionInfluence ?? FIELD_TUNING_DEFAULTS.motionInfluence);
   const impulseSensitivity = tuning?.impulseSensitivity ?? FIELD_TUNING_DEFAULTS.impulseSensitivity;
-  const crackleScale = nonNegative(tuning?.crackleScale, FIELD_TUNING_DEFAULTS.crackleScale);
+  const crackleScale = clampScale(
+    nonNegative(tuning?.crackleScale, FIELD_TUNING_DEFAULTS.crackleScale),
+  );
   const roarMix = clamp01(tuning?.roarMix ?? FIELD_TUNING_DEFAULTS.roarMix);
+  const pitchVariation = clamp01(tuning?.pitchVariation ?? FIELD_TUNING_DEFAULTS.pitchVariation);
+  const volumeVariation = clamp01(tuning?.volumeVariation ?? FIELD_TUNING_DEFAULTS.volumeVariation);
   const gain = clamp01(level) * (gridLimited ? GRID_LIMIT_GAIN : 1);
   const decay = Math.max(0.05, cooling);
   const probes: ProbeVoiceControl[] = [];
@@ -190,6 +209,8 @@ export function controlsFromField(
     crackleScale,
     roarMix,
     motionInfluence,
+    pitchVariation,
+    volumeVariation,
   };
 }
 
@@ -199,6 +220,11 @@ function positive(value: number | undefined, fallback: number): number {
 
 function nonNegative(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function clampScale(value: number): number {
+  if (value > CRACKLE_SCALE_MAX) return CRACKLE_SCALE_MAX;
+  return value;
 }
 
 function clampSigned(value: number): number {

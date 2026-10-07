@@ -16,6 +16,9 @@ export class PhisemVoice {
   private cooling = 1;
   private smoke = 0;
   private impulse = 0;
+  private pitchVariation = PITCH_VARIATION_DEFAULT;
+  private volumeVariation = VOLUME_VARIATION_DEFAULT;
+  private eventRatio = 1;
   private systemEnergy = 0;
   private soundLevel = 0;
   private brown = 0;
@@ -36,6 +39,8 @@ export class PhisemVoice {
     this.drive = finite(controls.drive, 0);
     this.cooling = Math.max(0.05, finite(controls.cooling, 1));
     this.smoke = clamp01(finite(controls.smoke, 0));
+    this.pitchVariation = clamp01(finite(controls.pitchVariation, PITCH_VARIATION_DEFAULT));
+    this.volumeVariation = clamp01(finite(controls.volumeVariation, VOLUME_VARIATION_DEFAULT));
     const kick = finite(controls.impulse, 0);
     if (kick > 0) this.impulse = Math.min(1.5, this.impulse + kick);
   }
@@ -45,6 +50,7 @@ export class PhisemVoice {
     if (this.impulse > 0) {
       this.systemEnergy = Math.min(1.5, this.systemEnergy + this.impulse);
       this.soundLevel += 0.85 * Math.min(1, this.impulse);
+      this.eventRatio = cracklePitchRatio(this.pitchVariation);
       this.impulse = 0;
     }
     if (this.drive <= 1e-6 && this.systemEnergy < 1e-5 && this.soundLevel < 1e-5) {
@@ -62,7 +68,8 @@ export class PhisemVoice {
       // Quadratic so a quiet fire pops sparsely and a hot one crackles.
       const rate = 70 * unit * unit;
       if (Math.random() < 1 - Math.exp(-rate * dt)) {
-        this.soundLevel += 0.35 + 0.65 * Math.random();
+        this.soundLevel += crackleAmplitude(this.volumeVariation);
+        this.eventRatio = cracklePitchRatio(this.pitchVariation);
       }
       this.soundLevel *= envelopeDecay;
       if (this.soundLevel < 1e-6) this.soundLevel = 0;
@@ -92,14 +99,42 @@ export class PhisemVoice {
   }
 
   private retune(unit: number): void {
-    this.low.setBandpass(280 + 80 * unit, 0.8);
-    this.mid.setBandpass(1500 + 700 * unit, 3.2);
-    this.high.setBandpass(3400 + 900 * unit, 4.5);
+    const ratio = this.eventRatio;
+    this.low.setBandpass(resonantFrequency(280 + 80 * unit, ratio), 0.8);
+    this.mid.setBandpass(resonantFrequency(1500 + 700 * unit, ratio), 3.2);
+    this.high.setBandpass(resonantFrequency(3400 + 900 * unit, ratio), 4.5);
   }
 }
 
-function finite(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback;
+/** 0 leaves each crackle on the fixed resonances. 1 is ±1 octave, per event. */
+export const PITCH_VARIATION_DEFAULT = 0;
+/** 0 is a steady hit. 1 is the original 0.35–1 envelope span, per event. */
+export const VOLUME_VARIATION_DEFAULT = 1;
+
+/** Center-frequency ratio for one crackle. */
+export function cracklePitchRatio(variation: number): number {
+  const amount = clamp01(variation);
+  if (amount === 0) return 1;
+  return 2 ** ((Math.random() * 2 - 1) * amount);
+}
+
+/** Envelope kick for one crackle. At 1 this is uniform on [0.35, 1]. */
+export function crackleAmplitude(variation: number): number {
+  const amount = clamp01(variation);
+  const mean = 0.675;
+  const half = 0.325 * amount;
+  return mean + half * (Math.random() * 2 - 1);
+}
+
+export function resonantFrequency(base: number, ratio: number): number {
+  const frequency = base * ratio;
+  if (frequency < 40) return 40;
+  if (frequency > 18000) return 18000;
+  return frequency;
+}
+
+function finite(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 function clamp01(value: number): number {
