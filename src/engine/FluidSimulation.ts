@@ -6,6 +6,12 @@ import { FLAME_CHANNELS, MAX_FLAME_KNOTS, packFlameStep } from './flame.ts';
 import { PressureSolver, type PressureBricks } from './PressureSolver.ts';
 import { createCurlNoise } from './CurlNoise.ts';
 import { fluidSource, fluidFirstOrderSource } from './ShaderSources.ts';
+import {
+  AUDIO_PROBE_BYTES,
+  AUDIO_PROBE_COUNT,
+  AUDIO_PROBE_FLOATS,
+  AUDIO_PROBE_STAGING,
+} from './audioProbes.ts';
 import { MeshSourceRasterizer } from './MeshSourceRasterizer.ts';
 import {
   TileDirectory,
@@ -311,6 +317,14 @@ export class FluidSimulation {
   /** Includes idle and mapping buffers so reset/dispose cannot lose an in-flight
    * readback whose promise resolves after the simulation was released. */
   private activityBuffers = new Set<GPUBuffer>();
+  /** Lazy: only a caller of `sampleAudioProbes` allocates these. The editor never does. */
+  private audioProbePositions?: GPUBuffer;
+  private audioProbeResults?: GPUBuffer;
+  private audioProbeReads: GPUBuffer[] = [];
+  private audioProbeBuffers = new Set<GPUBuffer>();
+  private audioProbeLatest: Float32Array | null = null;
+  private audioProbeSerial = 0;
+  private readonly audioProbeUpload = new Float32Array(AUDIO_PROBE_FLOATS);
   /** Counts resets: measurements of steps before the last one are dropped. */
   private epoch = 0;
   private pipelines = new Map<string, GPUComputePipeline>();
@@ -463,7 +477,9 @@ export class FluidSimulation {
         }),
       );
       sim.pressureSolver = await PressureSolver.create(
-        device, sim.velocityUniform, sim.velocityBrickCells,
+        device,
+        sim.velocityUniform,
+        sim.velocityBrickCells,
       );
       sim.pressureSolver.setBricks(sim.pressureBricks());
       sim.noise = await createCurlNoise(device);
@@ -554,9 +570,12 @@ export class FluidSimulation {
     format: GPUTextureFormat = 'rgba16float',
     rows = this.poolRows,
   ): GPUTexture {
-    const cells = grid === 'field'
-      ? this.brickCells
-      : grid === 'smoke' ? this.smokeBrickCells : this.velocityBrickCells;
+    const cells =
+      grid === 'field'
+        ? this.brickCells
+        : grid === 'smoke'
+          ? this.smokeBrickCells
+          : this.velocityBrickCells;
     const edge = cells + 1;
     return this.device.createTexture({
       label: `${label} pool`,
@@ -768,6 +787,7 @@ export class FluidSimulation {
   reset(): void {
     this.epoch++;
     this.releaseActivityReads();
+    this.releaseAudioProbeReads();
     this.releasePools();
     this.destroyTiles(this.tiles);
     this.allocate();
@@ -1777,9 +1797,118 @@ export class FluidSimulation {
       read.destroy();
     }
   }
+  /**
+   * Read heat, speed, and vorticity at fixed world positions. One thread per position
+   * in `sampleAudioProbes`. This does not run from `step`, and it does not write the
+   * fields the picture samples.
+   *
+   * The copy is mapped after submit. This method never waits on that map. Three staging
+   * buffers are kept; if every one is still mapped, this step is skipped. The value
+   * returned is the latest map that has finished, which lags the dispatch by at least
+   * one call. `null` until the first map completes.
+   */
+  sampleAudioProbes(positions: readonly Vec3[]): { serial: number; values: Float32Array } | null {
+    if (positions.length !== AUDIO_PROBE_COUNT)
+      throw new Error(`Audio probes expect ${AUDIO_PROBE_COUNT} positions.`);
+    if (this.steps === 0) return this.audioProbeSnapshot();
+    const read = this.takeAudioProbeRead();
+    if (!read) return this.audioProbeSnapshot();
+    this.ensureAudioProbeBuffers();
+    for (let i = 0; i < AUDIO_PROBE_COUNT; i++) {
+      const position = positions[i];
+      this.audioProbeUpload[i * 4] = position[0];
+      this.audioProbeUpload[i * 4 + 1] = position[1];
+      this.audioProbeUpload[i * 4 + 2] = position[2];
+      this.audioProbeUpload[i * 4 + 3] = 0;
+    }
+    this.device.queue.writeBuffer(this.audioProbePositions!, 0, this.audioProbeUpload);
+    const encoder = this.device.createCommandEncoder({ label: 'Audio probes' });
+    const pass = beginComputePass(this.device, encoder, { label: 'Audio probes' });
+    this.encode(
+      pass,
+      'sampleAudioProbes',
+      { 80: this.audioProbePositions, 81: this.audioProbeResults },
+      { workgroups: [1, 1, 1] },
+    );
+    pass.end();
+    encoder.copyBufferToBuffer(this.audioProbeResults!, 0, read, 0, AUDIO_PROBE_BYTES);
+    this.device.queue.submit([encoder.finish()]);
+    this.mapAudioProbes(read);
+    return this.audioProbeSnapshot();
+  }
+  private audioProbeSnapshot(): { serial: number; values: Float32Array } | null {
+    if (!this.audioProbeLatest) return null;
+    return { serial: this.audioProbeSerial, values: this.audioProbeLatest };
+  }
+  private ensureAudioProbeBuffers(): void {
+    if (this.audioProbePositions) return;
+    this.audioProbePositions = this.device.createBuffer({
+      label: 'Audio probe positions',
+      size: AUDIO_PROBE_BYTES,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    this.audioProbeResults = this.device.createBuffer({
+      label: 'Audio probe results',
+      size: AUDIO_PROBE_BYTES,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+    });
+  }
+  private takeAudioProbeRead(): GPUBuffer | undefined {
+    const cached = this.audioProbeReads.pop();
+    if (cached) return cached;
+    if (this.audioProbeBuffers.size >= AUDIO_PROBE_STAGING) return undefined;
+    const buffer = this.device.createBuffer({
+      label: 'Audio probe readback',
+      size: AUDIO_PROBE_BYTES,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    this.audioProbeBuffers.add(buffer);
+    return buffer;
+  }
+  private mapAudioProbes(read: GPUBuffer): void {
+    const epoch = this.epoch;
+    read
+      .mapAsync(GPUMapMode.READ)
+      .then(() => {
+        if (epoch !== this.epoch || !this.audioProbeBuffers.has(read)) {
+          this.discardAudioProbe(read);
+          return;
+        }
+        const copy = new Float32Array(read.getMappedRange().slice(0));
+        read.unmap();
+        if (epoch !== this.epoch) {
+          this.discardAudioProbe(read);
+          return;
+        }
+        if (this.audioProbeReads.length < AUDIO_PROBE_STAGING) this.audioProbeReads.push(read);
+        else this.discardAudioProbe(read);
+        this.audioProbeLatest = copy;
+        this.audioProbeSerial++;
+      })
+      .catch(() => this.discardAudioProbe(read));
+  }
+  private discardAudioProbe(buffer: GPUBuffer): void {
+    if (!this.audioProbeBuffers.delete(buffer)) return;
+    buffer.destroy();
+  }
+  /** Drop in-flight maps. Positions and results stay allocated for the next step. */
+  private releaseAudioProbeReads(): void {
+    this.audioProbeLatest = null;
+    for (const buffer of this.audioProbeBuffers) buffer.destroy();
+    this.audioProbeBuffers.clear();
+    this.audioProbeReads = [];
+  }
+  private releaseAudioProbes(): void {
+    this.releaseAudioProbeReads();
+    this.audioProbePositions?.destroy();
+    this.audioProbeResults?.destroy();
+    this.audioProbePositions = undefined;
+    this.audioProbeResults = undefined;
+  }
   dispose(): void {
     this.epoch++;
     this.releaseActivityReads();
+    this.releaseAudioProbes();
     this.pressureSolver?.dispose();
     if (this.tiles) {
       this.releasePools();

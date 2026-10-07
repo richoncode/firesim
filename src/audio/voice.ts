@@ -1,6 +1,11 @@
-import type { VoiceControls } from './mapping.ts';
+import type { PlumeControls, VoiceControls } from './mapping.ts';
 
 const WORKLET_URL = `${import.meta.env.BASE_URL}audio/fire-voice-processor.js`;
+
+export interface FireVoiceOptions {
+  /** Playback posts a stereo plume. The slider page stays mono. */
+  channels?: 1 | 2;
+}
 
 /**
  * Main-thread owner of the fire voice. The context is created on the first unmute,
@@ -8,6 +13,7 @@ const WORKLET_URL = `${import.meta.env.BASE_URL}audio/fire-voice-processor.js`;
  * Mute zeros the output gain and leaves the caller (and the simulation) running.
  */
 export class FireVoice {
+  private readonly channels: 1 | 2;
   private context?: AudioContext;
   private gain?: GainNode;
   private node?: AudioWorkletNode;
@@ -15,6 +21,12 @@ export class FireVoice {
   private audible = false;
   private controls: VoiceControls = { drive: 0, cooling: 1, smoke: 0, impulse: 0 };
   private queuedImpulse = 0;
+  private plume?: PlumeControls;
+  private readonly queuedProbeImpulse: number[] = [];
+
+  constructor(options: FireVoiceOptions = {}) {
+    this.channels = options.channels === 2 ? 2 : 1;
+  }
 
   get isAudible(): boolean {
     return this.audible;
@@ -26,6 +38,25 @@ export class FireVoice {
     // Drop bursts that happen before the gesture. Audio-off stays silent, including the first unmute.
     if (this.context && kick > 0) this.queuedImpulse = Math.min(1.5, this.queuedImpulse + kick);
     this.controls = { ...controls, impulse: 0 };
+    this.plume = undefined;
+    this.post();
+  }
+
+  /**
+   * Per-probe crackle plus the shared roar. Impulses that arrive before the gesture
+   * are dropped, the same way the slider voice drops a burst that happens while silent.
+   */
+  setPlume(controls: PlumeControls): void {
+    const probes = controls.probes.map((probe, index) => {
+      const kick = this.context && Number.isFinite(probe.impulse) ? Math.max(0, probe.impulse) : 0;
+      if (kick > 0)
+        this.queuedProbeImpulse[index] = Math.min(
+          1.5,
+          (this.queuedProbeImpulse[index] ?? 0) + kick,
+        );
+      return { ...probe, impulse: 0 };
+    });
+    this.plume = { ...controls, probes };
     this.post();
   }
 
@@ -74,7 +105,7 @@ export class FireVoice {
     const node = new AudioWorkletNode(context, 'fire-voice', {
       numberOfInputs: 0,
       numberOfOutputs: 1,
-      outputChannelCount: [1],
+      outputChannelCount: [this.channels],
     });
     const gain = context.createGain();
     gain.gain.value = 0;
@@ -92,6 +123,15 @@ export class FireVoice {
 
   private post(): void {
     if (!this.node) return;
+    if (this.plume) {
+      const probes = this.plume.probes.map((probe, index) => {
+        const impulse = this.queuedProbeImpulse[index] ?? 0;
+        this.queuedProbeImpulse[index] = 0;
+        return impulse > 0 ? { ...probe, impulse } : probe;
+      });
+      this.node.port.postMessage({ ...this.plume, probes });
+      return;
+    }
     this.node.port.postMessage({ ...this.controls, impulse: this.queuedImpulse });
     this.queuedImpulse = 0;
   }

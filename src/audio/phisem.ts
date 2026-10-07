@@ -108,7 +108,7 @@ function clamp01(value: number): number {
 }
 
 /** Constant-peak-gain bandpass, RBJ cookbook. Coefficients refresh only when the tune changes. */
-class Biquad {
+export class Biquad {
   private readonly sampleRate: number;
   private frequency = -1;
   private q = -1;

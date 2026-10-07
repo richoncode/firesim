@@ -1,15 +1,30 @@
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { probeInputFromSimulation, worldPosition } from '../../src/audio/from-simulation.ts';
-import { controlsFromProbe } from '../../src/audio/mapping.ts';
+import { latticeAnchor, probeLattice } from '../../src/audio/lattice.ts';
+import {
+  controlsFromField,
+  coolingFromProbe,
+  FIELD_HEAT_REFERENCE,
+} from '../../src/audio/mapping.ts';
 import { mountFireAudioPanel } from '../../src/audio/panel.ts';
+import { probeInputFromSimulation, worldPosition } from '../../src/audio/from-simulation.ts';
 import { FireAudioProbe, formatProbeSample } from '../../src/audio/probe.ts';
+import { ProbeSmoother } from '../../src/audio/smooth-probes.ts';
 import { FireVoice } from '../../src/audio/voice.ts';
-import { FireSimulation, type Emitter, type Explosion } from '../../src/index.ts';
+import {
+  FireSimulation,
+  type AudioFieldSample,
+  type Emitter,
+  type Explosion,
+} from '../../src/index.ts';
 
-// A configuration exported from the editor (Export → JSON).
-const config = await (await fetch(new URL('./simulation.json', import.meta.url))).json();
+// Campfire is the listening preset. `?preset=tornado` still loads the checked-in tornado.
+const useTornado = new URLSearchParams(location.search).get('preset') === 'tornado';
+const configUrl = useTornado
+  ? new URL('./simulation.json', import.meta.url)
+  : new URL('../../editor/presets/campfire.json', import.meta.url);
+const config = await (await fetch(configUrl)).json();
 
 const renderer = new THREE.WebGPURenderer({ antialias: true });
 // Flames light the scene with point lights; clustered lighting adds and removes them
@@ -99,39 +114,79 @@ for (const collider of config.colliders) {
   });
 }
 
+const anchor = latticeAnchor(
+  [...emitters.values()].map((emitter) => {
+    const options = emitter.getOptions();
+    return {
+      active: options.active,
+      heat: options.emission.heatRate * options.emission.flame,
+      position: worldPosition(emitter.object),
+    };
+  }),
+);
+const sites = probeLattice(anchor, simulation.getOptions().voxelSize);
+const positions = sites.map((site) => site.position);
+
 await simulation.initialize(renderer);
 
-// CPU proxies for the voice. The solver is unchanged. Audio stays off until Unmute.
+// The lattice read is opt-in. Mute does not stop it, and it does not write the fields.
 const probe = new FireAudioProbe();
-const voice = new FireVoice();
+const smoother = new ProbeSmoother();
+const voice = new FireVoice({ channels: 2 });
 let level = 0.7;
 let logProbe = new URLSearchParams(location.search).has('probe');
-const postVoice = (includeImpulse: boolean) => {
-  const sample = probe.latest;
-  if (!sample) return;
-  voice.setControls(controlsFromProbe(sample, level, includeImpulse));
-};
-mountFireAudioPanel(document.body, {
+let serial = -1;
+let previousRaw: readonly AudioFieldSample[] | null = null;
+let lastRaw: readonly AudioFieldSample[] | null = null;
+let lastHeard: ReturnType<ProbeSmoother['apply']> | null = null;
+
+const presetName = useTornado ? 'fire tornado' : 'campfire';
+const panel = mountFireAudioPanel(document.body, {
   voice,
   level,
   floating: true,
+  probeHud: true,
   logInitially: logProbe,
-  hint: 'Level scales the fire’s heat. Zero lets the crackle die out. Mute leaves the simulation running. This preset is the fire tornado.',
+  hint: `Level scales every probe. Zero lets the crackle die out. Mute leaves the simulation running. This preset is the ${presetName}. Bottom row of the strip is the emitter.`,
   onLevel: (next) => {
     level = next;
-    postVoice(false);
+    publish(false);
   },
   onLog: (enabled) => {
     logProbe = enabled;
   },
 });
 
-// Bursts fire once at the start and again on Space. The charge is the audio impulse.
-const detonate = () =>
-  explosions.forEach((explosion) => {
-    probe.noteImpulse(explosion.getOptions().charge.heat, worldPosition(explosion.object));
-    explosion.trigger();
-  });
+function publish(includeImpulse: boolean): void {
+  const cpu = probe.latest;
+  if (!cpu || !lastRaw || !lastHeard) return;
+  voice.setPlume(
+    controlsFromField(
+      lastHeard,
+      lastRaw,
+      previousRaw,
+      positions,
+      level,
+      coolingFromProbe(cpu),
+      cpu.smoke / 4,
+      cpu.gridLimited,
+      includeImpulse,
+    ),
+  );
+  panel.setProbes(
+    lastHeard.map((sample) => ({
+      heat: sample.heat,
+      energy: Math.min(1, Math.max(0, sample.heat / FIELD_HEAT_REFERENCE)),
+      speed: sample.speed,
+      vorticity: sample.vorticity,
+      live: sample.live,
+    })),
+  );
+}
+
+// Bursts still change the picture. The voice takes its pop from a heat jump at a probe,
+// not from this key, so a preset with no bursts stays on the plume alone.
+const detonate = () => explosions.forEach((explosion) => explosion.trigger());
 detonate();
 addEventListener('keydown', (event) => {
   if (event.code === 'Space') detonate();
@@ -151,7 +206,18 @@ renderer.setAnimationLoop((time) => {
   const sample = probe.capture(probeInputFromSimulation(simulation, [...emitters.values()]));
   if (sample) {
     if (logProbe) console.info(formatProbeSample(sample));
-    postVoice(true);
+    const read = simulation.sampleAudioField(positions);
+    if (read && read.serial !== serial) {
+      serial = read.serial;
+      lastRaw = read.samples;
+      lastHeard = smoother.apply(read.samples);
+      if (logProbe) {
+        const heat = read.samples.map((probeSample) => probeSample.heat.toFixed(2)).join(' ');
+        console.info(`field #${read.serial} ${heat}`);
+      }
+      publish(true);
+      previousRaw = read.samples;
+    }
   }
   renderer.render(scene, camera);
 });

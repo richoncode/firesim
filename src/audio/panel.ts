@@ -1,4 +1,15 @@
+import { PROBE_LAYERS, PROBE_PER_LAYER } from './lattice.ts';
 import type { FireVoice } from './voice.ts';
+
+export interface ProbeHudSample {
+  /** Smoothed field heat. */
+  heat: number;
+  /** 0 to 1 local energy target. */
+  energy: number;
+  speed: number;
+  vorticity: number;
+  live: boolean;
+}
 
 export interface AudioPanelOptions {
   voice: FireVoice;
@@ -11,10 +22,19 @@ export interface AudioPanelOptions {
   logInitially?: boolean;
   /** Overlay on the simulation. The slider page leaves this off and places the panel in the page. */
   floating?: boolean;
+  /** Sixteen probe bars, four layers, base at the bottom. */
+  probeHud?: boolean;
+}
+
+export interface FireAudioPanel {
+  setProbes(samples: readonly ProbeHudSample[]): void;
 }
 
 /** Unmute button, level slider, and optional probe log. U toggles mute. */
-export function mountFireAudioPanel(parent: ParentNode, options: AudioPanelOptions): void {
+export function mountFireAudioPanel(
+  parent: ParentNode,
+  options: AudioPanelOptions,
+): FireAudioPanel {
   ensureStyle();
   const panel = document.createElement('section');
   panel.className = options.floating ? 'fire-audio fire-audio-floating' : 'fire-audio';
@@ -57,6 +77,34 @@ export function mountFireAudioPanel(parent: ParentNode, options: AudioPanelOptio
     box.addEventListener('change', () => options.onLog?.(box.checked));
     panel.append(logLabel);
   }
+  const fills: HTMLElement[] = [];
+  let summary: HTMLElement | undefined;
+  if (options.probeHud) {
+    const hud = document.createElement('div');
+    hud.className = 'fire-audio-hud';
+    const caption = document.createElement('p');
+    caption.className = 'fire-audio-hud-caption';
+    caption.textContent = 'Probe energy. The bottom row is the emitter.';
+    hud.append(caption);
+    for (let layer = PROBE_LAYERS - 1; layer >= 0; layer--) {
+      const row = document.createElement('div');
+      row.className = 'fire-audio-hud-row';
+      for (let column = 0; column < PROBE_PER_LAYER; column++) {
+        const slot = document.createElement('div');
+        slot.className = 'fire-audio-bar';
+        const fill = document.createElement('span');
+        slot.append(fill);
+        row.append(slot);
+        fills[layer * PROBE_PER_LAYER + column] = fill;
+      }
+      hud.append(row);
+    }
+    summary = document.createElement('p');
+    summary.className = 'fire-audio-hud-summary';
+    summary.textContent = 'Waiting for probes.';
+    hud.append(summary);
+    panel.append(hud);
+  }
   parent.append(panel);
 
   const paint = () => {
@@ -95,6 +143,38 @@ export function mountFireAudioPanel(parent: ParentNode, options: AudioPanelOptio
     void toggle();
   });
   paint();
+  return {
+    setProbes(samples) {
+      if (!summary) return;
+      let heat = 0;
+      let speed = 0;
+      let vorticity = 0;
+      let live = 0;
+      samples.forEach((sample, index) => {
+        const fill = fills[index];
+        if (!fill) return;
+        const energy = sample.live ? clamp01(sample.energy) : 0;
+        fill.style.width = `${Math.round(energy * 100)}%`;
+        const slot = fill.parentElement;
+        if (slot) slot.style.opacity = sample.live ? '1' : '0.35';
+        fill.title = `heat ${sample.heat.toFixed(2)}`;
+        if (!sample.live) return;
+        heat += sample.heat;
+        speed += sample.speed;
+        vorticity += sample.vorticity;
+        live++;
+      });
+      summary.textContent =
+        live > 0
+          ? `heat ${(heat / live).toFixed(2)}  speed ${(speed / live).toFixed(2)}  vort ${(vorticity / live).toFixed(1)}  live ${live}`
+          : 'Probes quiet.';
+    },
+  };
+}
+
+function clamp01(value: number): number {
+  if (!(value > 0)) return 0;
+  return value > 1 ? 1 : value;
 }
 
 function percent(level: number): string {
@@ -125,6 +205,14 @@ function ensureStyle(): void {
     .fire-audio-level { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
     .fire-audio-level input { width: 100%; }
     .fire-audio-log { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: #b7b3ac; }
+    .fire-audio-hud { margin-top: 10px; }
+    .fire-audio-hud-caption, .fire-audio-hud-summary {
+      margin: 0; color: #b7b3ac; font-variant-numeric: tabular-nums;
+    }
+    .fire-audio-hud-summary { margin-top: 4px; }
+    .fire-audio-hud-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-top: 3px; }
+    .fire-audio-bar { height: 8px; background: #2a2c31; border-radius: 2px; overflow: hidden; }
+    .fire-audio-bar > span { display: block; height: 100%; width: 0; background: #e07a3d; }
   `;
   document.head.append(style);
 }

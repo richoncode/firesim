@@ -121,6 +121,25 @@ export interface SimulationStats {
    * the bricks near content and sources. */
   activeVoxels: number;
 }
+
+/** One sparse audio probe. Heat is a single field cell. Speed and vorticity use that
+ * cell's velocity neighborhood, not a sum over the grid. */
+export interface AudioFieldSample {
+  /** Field heat, empty unit. */
+  heat: number;
+  /** Max speed in the velocity cell and its six neighbors, m/s. */
+  speed: number;
+  /** Curl magnitude by central differences over one velocity cell, 1/s. */
+  vorticity: number;
+  /** The field cell's brick has a slot. */
+  live: boolean;
+}
+
+/** Latest completed probe map. `serial` advances when a new map lands. */
+export interface AudioFieldRead {
+  serial: number;
+  samples: readonly AudioFieldSample[];
+}
 /** The solver field a debug view copies out of the solver after every step, if any. */
 function solverField(field: DebugField): 'pressure' | 'divergence' | undefined {
   return field === 'pressure' || field === 'divergence' ? field : undefined;
@@ -327,9 +346,8 @@ export class FireSimulation extends Object3D {
       activeVoxels: (fluid?.activeBrickCount ?? 0) * cells ** 3,
       estimatedMemoryBytes:
         simulationMemory +
-        (this.surface?.memoryBytes ?? renderMemoryEstimate(
-          slots, cells, boxBricks, this.options.rendering.lightingDivisor,
-        )),
+        (this.surface?.memoryBytes ??
+          renderMemoryEstimate(slots, cells, boxBricks, this.options.rendering.lightingDivisor)),
     });
   }
   /** View a single simulation field, or outline the bricks the solver computes. */
@@ -516,6 +534,29 @@ export class FireSimulation extends Object3D {
     };
     fluid.step(frame, FIXED_DT);
     this.pending = [];
+  }
+  /**
+   * Read heat, speed, and vorticity at `positions` (a fixed lattice of 16 world points).
+   * Call this after `update` when a step ran. `update` itself does not call it, so the
+   * editor never pays for the pass. The pass only reads. The picture is unchanged.
+   * Returns the latest finished map, which lags the dispatch, or null until that map lands.
+   * If every staging buffer is still in flight, the dispatch is skipped and the previous
+   * map is held.
+   */
+  sampleAudioField(positions: readonly Vec3[]): AudioFieldRead | null {
+    this.assertReady();
+    const read = this.fluid!.sampleAudioProbes(positions);
+    if (!read) return null;
+    const samples: AudioFieldSample[] = [];
+    for (let i = 0; i < read.values.length; i += 4) {
+      samples.push({
+        heat: read.values[i] || 0,
+        speed: read.values[i + 1] || 0,
+        vorticity: read.values[i + 2] || 0,
+        live: read.values[i + 3] >= 0.5,
+      });
+    }
+    return { serial: read.serial, samples };
   }
   reset(): void {
     this.assertReady();

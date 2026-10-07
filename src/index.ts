@@ -1,4 +1,9 @@
-export { FireSimulation, type SimulationStats } from './library/FireSimulation.ts';
+export {
+  FireSimulation,
+  type SimulationStats,
+  type AudioFieldSample,
+  type AudioFieldRead,
+} from './library/FireSimulation.ts';
 export type { Emitter, Explosion, Force, Collider } from './library/handles.ts';
 export type {
   DeepReadonly,

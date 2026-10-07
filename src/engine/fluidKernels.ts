@@ -62,6 +62,8 @@ function kernels(): Record<string, number[]> {
     zeroVelocityBricks: [...zeroing, 6, 7, 58, 59, 60, 61],
     zeroFieldBricks: [...zeroing, 6, 16, 58, 59],
     growFreeList: [46, 47, 51],
+    // One thread per fixed probe. Not a listed-brick dispatch and not a grid reduction.
+    sampleAudioProbes: [0, 1, 2, 63, 64, 65, 66, 80, 81],
   });
   for (const list of Object.values(used)) list.sort((a, b) => a - b);
   return used;
@@ -95,15 +97,11 @@ export const VELOCITY_KERNELS = new Set([
   'exportScalars',
 ]);
 
-export const SMOKE_KERNELS = new Set([
-  'advectSmoke',
-  'evolveSmoke',
-  'zeroSmokeBricks',
-]);
+export const SMOKE_KERNELS = new Set(['advectSmoke', 'evolveSmoke', 'zeroSmokeBricks']);
 
 const UNIFORM = new Set([0, 22, 51]);
-const READ_ONLY_STORAGE = new Set([4, 9, 10, 23, 25, 26, 27, 30, 31, 37, 49, 70, 71]);
-const STORAGE = new Set([7, 36, 39, 41, 43, 45, 46, 47, 48, 57, 60, 61, 72]);
+const READ_ONLY_STORAGE = new Set([4, 9, 10, 23, 25, 26, 27, 30, 31, 37, 49, 70, 71, 80]);
+const STORAGE = new Set([7, 36, 39, 41, 43, 45, 46, 47, 48, 57, 60, 61, 72, 81]);
 const SAMPLERS = new Set([8, 12]);
 const WRITE_ONLY_TEXTURES: Record<number, GPUTextureFormat> = {
   6: 'rgba16float',
