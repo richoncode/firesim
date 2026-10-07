@@ -119,7 +119,7 @@ The result is one vec4 per probe, 64 to 512 bytes. A copy into one of three `MAP
 
 Playback smooths heat, speed, and vorticity with a one-pole of about 60 ms, then posts. `live` is not smoothed.
 
-Each probe has its own energy and a small PhISEM crackle (`PlumeVoice` in `src/audio/plume.ts`). A rising target approaches at about 8/s, so a plume that reaches the next layer a fraction of a second later is still a separate onset. A falling target decays at the fire's cooling (the phase 3 decay, including the 0.35/s floor). The shared roar is the mean energy of the probes that are live and actually burning. Quiet probes are left out of that mean. The roar is equal-power panned by the energy-weighted world X of those probes, and each crackle is panned on its own. ±0.6 m is hard left or right. Campfire's probes are only about 0.15 m off center, so the pan is mild. A lattice that burns on both sides stays near the middle.
+Each probe has its own energy and a small crackle inspired by Cook’s PhISEM idea (random, Poisson-timed bursts) (`PlumeVoice` in `src/audio/plume.ts`). A rising target approaches at about 8/s, so a plume that reaches the next layer a fraction of a second later is still a separate onset. A falling target decays at the fire's cooling (the phase 3 decay, including the 0.35/s floor). The shared roar is the mean energy of the probes that are live and actually burning. Quiet probes are left out of that mean. The roar is equal-power panned by the energy-weighted world X of those probes, and each crackle is panned on its own. ±0.6 m is hard left or right. Campfire's probes are only about 0.15 m off center, so the pan is mild. A lattice that burns on both sides stays near the middle.
 
 | Posted control | Formula |
 | -------------- | ------- |
