@@ -15,6 +15,14 @@ export class ProbeSmoother {
   private readonly vorticity: number[] = [];
   private ready = false;
 
+  /** Drop smoothed state when the lattice is rebuilt, so old cells do not bleed into new ones. */
+  reset(): void {
+    this.heat.length = 0;
+    this.speed.length = 0;
+    this.vorticity.length = 0;
+    this.ready = false;
+  }
+
   apply(samples: readonly FieldProbeReading[], dt = STEP_SECONDS): FieldProbeReading[] {
     const blend = this.ready ? 1 - Math.exp(-Math.max(0, dt) / SMOOTH_SECONDS) : 1;
     this.ready = true;

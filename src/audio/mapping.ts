@@ -102,7 +102,35 @@ export interface PlumeControls {
   probes: ProbeVoiceControl[];
   cooling: number;
   smoke: number;
+  /** Multiplies the crackle event rate. 1 is the default. */
+  crackleScale: number;
+  /** 0 is crackle only, 1 is roar only, 0.5 keeps the default balance. */
+  roarMix: number;
+  /**
+   * 0 ignores speed and vorticity. 0.75 is the default, a floor of 0.25 plus the motion.
+   * 1 lets a still probe go quiet.
+   */
+  motionInfluence: number;
 }
+
+/** Knobs on the playback experiment panel. Omitted fields use these defaults. */
+export interface FieldTuning {
+  /** Multiplies field heat before it is compared with `FIELD_HEAT_REFERENCE`. */
+  heatGain: number;
+  motionInfluence: number;
+  /** Divides the heat-rise threshold. 0 disables pops. 1 is the default. */
+  impulseSensitivity: number;
+  crackleScale: number;
+  roarMix: number;
+}
+
+export const FIELD_TUNING_DEFAULTS: FieldTuning = {
+  heatGain: 1,
+  motionInfluence: 0.75,
+  impulseSensitivity: 1,
+  crackleScale: 1,
+  roarMix: 0.5,
+};
 
 /**
  * Smoothed heat, speed, and vorticity drive each probe. Impulses use the unsmoothed
@@ -120,23 +148,32 @@ export function controlsFromField(
   smoke: number,
   gridLimited: boolean,
   includeImpulse: boolean,
+  tuning?: Partial<FieldTuning>,
 ): PlumeControls {
   const count = heard.length;
   if (jumps.length !== count || positions.length !== count)
     throw new Error('Probe controls need one position per reading.');
+  const heatGain = positive(tuning?.heatGain, FIELD_TUNING_DEFAULTS.heatGain);
+  const motionInfluence = clamp01(tuning?.motionInfluence ?? FIELD_TUNING_DEFAULTS.motionInfluence);
+  const impulseSensitivity = tuning?.impulseSensitivity ?? FIELD_TUNING_DEFAULTS.impulseSensitivity;
+  const crackleScale = nonNegative(tuning?.crackleScale, FIELD_TUNING_DEFAULTS.crackleScale);
+  const roarMix = clamp01(tuning?.roarMix ?? FIELD_TUNING_DEFAULTS.roarMix);
   const gain = clamp01(level) * (gridLimited ? GRID_LIMIT_GAIN : 1);
   const decay = Math.max(0.05, cooling);
   const probes: ProbeVoiceControl[] = [];
+  const previous = previousJumps && previousJumps.length === count ? previousJumps : null;
   for (let i = 0; i < count; i++) {
     const reading = heard[i];
     const live = jumps[i].live;
-    const intensity = clamp01(reading.heat / FIELD_HEAT_REFERENCE) * gain;
+    const intensity = clamp01((reading.heat * heatGain) / FIELD_HEAT_REFERENCE) * gain;
     const speed = clamp01(reading.speed / SPEED_REFERENCE);
     const swirl = clamp01(reading.vorticity / VORTICITY_REFERENCE);
     let impulse = 0;
-    if (includeImpulse && previousJumps && live && previousJumps[i].live) {
-      const rise = jumps[i].heat - previousJumps[i].heat;
-      if (rise > HEAT_JUMP) impulse = gain * clamp01(rise / HEAT_JUMP_REFERENCE);
+    if (includeImpulse && impulseSensitivity > 0 && previous && live && previous[i].live) {
+      const rise = jumps[i].heat - previous[i].heat;
+      const threshold = HEAT_JUMP / impulseSensitivity;
+      if (rise > threshold)
+        impulse = gain * clamp01(rise / (HEAT_JUMP_REFERENCE / impulseSensitivity));
     }
     probes.push({
       drive: live ? intensity * decay : 0,
@@ -146,7 +183,22 @@ export function controlsFromField(
       live,
     });
   }
-  return { probes, cooling: decay, smoke: clamp01(smoke) };
+  return {
+    probes,
+    cooling: decay,
+    smoke: clamp01(smoke),
+    crackleScale,
+    roarMix,
+    motionInfluence,
+  };
+}
+
+function positive(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function nonNegative(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 function clampSigned(value: number): number {

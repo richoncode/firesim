@@ -6,12 +6,7 @@ import { FLAME_CHANNELS, MAX_FLAME_KNOTS, packFlameStep } from './flame.ts';
 import { PressureSolver, type PressureBricks } from './PressureSolver.ts';
 import { createCurlNoise } from './CurlNoise.ts';
 import { fluidSource, fluidFirstOrderSource } from './ShaderSources.ts';
-import {
-  AUDIO_PROBE_BYTES,
-  AUDIO_PROBE_COUNT,
-  AUDIO_PROBE_FLOATS,
-  AUDIO_PROBE_STAGING,
-} from './audioProbes.ts';
+import { AUDIO_PROBE_MAX, AUDIO_PROBE_MIN, AUDIO_PROBE_STAGING } from './audioProbes.ts';
 import { MeshSourceRasterizer } from './MeshSourceRasterizer.ts';
 import {
   TileDirectory,
@@ -324,7 +319,9 @@ export class FluidSimulation {
   private audioProbeBuffers = new Set<GPUBuffer>();
   private audioProbeLatest: Float32Array | null = null;
   private audioProbeSerial = 0;
-  private readonly audioProbeUpload = new Float32Array(AUDIO_PROBE_FLOATS);
+  private readonly audioProbeUpload = new Float32Array(AUDIO_PROBE_MAX * 4);
+  /** Byte size of the position and result buffers. 0 until the first sample. */
+  private audioProbeBytes = 0;
   /** Counts resets: measurements of steps before the last one are dropped. */
   private epoch = 0;
   private pipelines = new Map<string, GPUComputePipeline>();
@@ -1808,30 +1805,35 @@ export class FluidSimulation {
    * one call. `null` until the first map completes.
    */
   sampleAudioProbes(positions: readonly Vec3[]): { serial: number; values: Float32Array } | null {
-    if (positions.length !== AUDIO_PROBE_COUNT)
-      throw new Error(`Audio probes expect ${AUDIO_PROBE_COUNT} positions.`);
+    const count = positions.length;
+    if (count < AUDIO_PROBE_MIN || count > AUDIO_PROBE_MAX)
+      throw new Error(`Audio probes expect ${AUDIO_PROBE_MIN}–${AUDIO_PROBE_MAX} positions.`);
     if (this.steps === 0) return this.audioProbeSnapshot();
+    this.ensureAudioProbeBuffers(count);
     const read = this.takeAudioProbeRead();
     if (!read) return this.audioProbeSnapshot();
-    this.ensureAudioProbeBuffers();
-    for (let i = 0; i < AUDIO_PROBE_COUNT; i++) {
+    for (let i = 0; i < count; i++) {
       const position = positions[i];
       this.audioProbeUpload[i * 4] = position[0];
       this.audioProbeUpload[i * 4 + 1] = position[1];
       this.audioProbeUpload[i * 4 + 2] = position[2];
       this.audioProbeUpload[i * 4 + 3] = 0;
     }
-    this.device.queue.writeBuffer(this.audioProbePositions!, 0, this.audioProbeUpload);
+    this.device.queue.writeBuffer(
+      this.audioProbePositions!,
+      0,
+      this.audioProbeUpload.subarray(0, count * 4),
+    );
     const encoder = this.device.createCommandEncoder({ label: 'Audio probes' });
     const pass = beginComputePass(this.device, encoder, { label: 'Audio probes' });
     this.encode(
       pass,
       'sampleAudioProbes',
       { 80: this.audioProbePositions, 81: this.audioProbeResults },
-      { workgroups: [1, 1, 1] },
+      { workgroups: [Math.ceil(count / 16), 1, 1] },
     );
     pass.end();
-    encoder.copyBufferToBuffer(this.audioProbeResults!, 0, read, 0, AUDIO_PROBE_BYTES);
+    encoder.copyBufferToBuffer(this.audioProbeResults!, 0, read, 0, count * 16);
     this.device.queue.submit([encoder.finish()]);
     this.mapAudioProbes(read);
     return this.audioProbeSnapshot();
@@ -1840,26 +1842,33 @@ export class FluidSimulation {
     if (!this.audioProbeLatest) return null;
     return { serial: this.audioProbeSerial, values: this.audioProbeLatest };
   }
-  private ensureAudioProbeBuffers(): void {
-    if (this.audioProbePositions) return;
+  private ensureAudioProbeBuffers(count: number): void {
+    const bytes = count * 16;
+    if (this.audioProbePositions && this.audioProbeBytes === bytes) return;
+    this.releaseAudioProbes();
+    for (const key of [...this.bindings.keys()]) {
+      if (key.startsWith('sampleAudioProbes:')) this.bindings.delete(key);
+    }
+    this.audioProbeBytes = bytes;
     this.audioProbePositions = this.device.createBuffer({
       label: 'Audio probe positions',
-      size: AUDIO_PROBE_BYTES,
+      size: bytes,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.audioProbeResults = this.device.createBuffer({
       label: 'Audio probe results',
-      size: AUDIO_PROBE_BYTES,
+      size: bytes,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
   private takeAudioProbeRead(): GPUBuffer | undefined {
     const cached = this.audioProbeReads.pop();
-    if (cached) return cached;
+    if (cached && cached.size === this.audioProbeBytes) return cached;
+    if (cached) this.discardAudioProbe(cached);
     if (this.audioProbeBuffers.size >= AUDIO_PROBE_STAGING) return undefined;
     const buffer = this.device.createBuffer({
       label: 'Audio probe readback',
-      size: AUDIO_PROBE_BYTES,
+      size: this.audioProbeBytes,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
     this.audioProbeBuffers.add(buffer);
@@ -1876,7 +1885,7 @@ export class FluidSimulation {
         }
         const copy = new Float32Array(read.getMappedRange().slice(0));
         read.unmap();
-        if (epoch !== this.epoch) {
+        if (epoch !== this.epoch || read.size !== this.audioProbeBytes) {
           this.discardAudioProbe(read);
           return;
         }
@@ -1904,6 +1913,7 @@ export class FluidSimulation {
     this.audioProbeResults?.destroy();
     this.audioProbePositions = undefined;
     this.audioProbeResults = undefined;
+    this.audioProbeBytes = 0;
   }
   dispose(): void {
     this.epoch++;

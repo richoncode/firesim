@@ -536,7 +536,7 @@ export class FireSimulation extends Object3D {
     this.pending = [];
   }
   /**
-   * Read heat, speed, and vorticity at `positions` (a fixed lattice of 16 world points).
+   * Read heat, speed, and vorticity at `positions` (a sparse lattice of 4–32 world points).
    * Call this after `update` when a step ran. `update` itself does not call it, so the
    * editor never pays for the pass. The pass only reads. The picture is unchanged.
    * Returns the latest finished map, which lags the dispatch, or null until that map lands.

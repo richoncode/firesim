@@ -1,13 +1,21 @@
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ClusteredLighting } from 'three/addons/lighting/ClusteredLighting.js';
-import { latticeAnchor, probeLattice } from '../../src/audio/lattice.ts';
+import {
+  defaultExperimentSettings,
+  mountExperimentPanel,
+} from '../../src/audio/experiment-panel.ts';
+import {
+  latticeAnchor,
+  latticeShape,
+  PROBE_COUNT_MAX,
+  probeLattice,
+} from '../../src/audio/lattice.ts';
 import {
   controlsFromField,
   coolingFromProbe,
   FIELD_HEAT_REFERENCE,
 } from '../../src/audio/mapping.ts';
-import { mountFireAudioPanel } from '../../src/audio/panel.ts';
 import { probeInputFromSimulation, worldPosition } from '../../src/audio/from-simulation.ts';
 import { FireAudioProbe, formatProbeSample } from '../../src/audio/probe.ts';
 import { ProbeSmoother } from '../../src/audio/smooth-probes.ts';
@@ -33,7 +41,6 @@ renderer.lighting = new ClusteredLighting();
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.setSize(innerWidth, innerHeight);
 document.body.append(renderer.domElement);
-await renderer.init();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x15161a);
@@ -124,65 +131,128 @@ const anchor = latticeAnchor(
     };
   }),
 );
-const sites = probeLattice(anchor, simulation.getOptions().voxelSize);
-const positions = sites.map((site) => site.position);
+const voxelSize = simulation.getOptions().voxelSize;
+const settings = defaultExperimentSettings(0.7);
+let sites = probeLattice(anchor, voxelSize, {
+  count: settings.count,
+  spacingCells: settings.spacing,
+});
+let positions = sites.map((site) => site.position);
 
-await simulation.initialize(renderer);
+// Markers are the only picture change. They are not colliders and not emitters.
+const probeMarkers = new THREE.Group();
+probeMarkers.name = 'Audio probe markers';
+const markerGeometry = new THREE.SphereGeometry(0.06, 12, 8);
+const markerBase = new THREE.Color(0xff6a2a);
+const markerTop = new THREE.Color(0xffe7a3);
+const markerMeshes = Array.from({ length: PROBE_COUNT_MAX }, () => {
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffb25a,
+    depthTest: false,
+    toneMapped: false,
+    transparent: true,
+    opacity: 0.95,
+  });
+  const mesh = new THREE.Mesh(markerGeometry, material);
+  mesh.renderOrder = 10;
+  mesh.visible = false;
+  probeMarkers.add(mesh);
+  return mesh;
+});
+scene.add(probeMarkers);
+
+function placeMarkers(): void {
+  const shape = latticeShape(settings.count);
+  probeMarkers.visible = settings.showProbes;
+  markerMeshes.forEach((mesh, index) => {
+    const site = sites[index];
+    mesh.visible = Boolean(site);
+    if (!site) return;
+    mesh.position.set(site.position[0], site.position[1], site.position[2]);
+    const along = shape.y <= 1 ? 0 : site.layer / (shape.y - 1);
+    (mesh.material as THREE.MeshBasicMaterial).color.copy(markerBase).lerp(markerTop, along);
+  });
+}
+
+placeMarkers();
 
 // The lattice read is opt-in. Mute does not stop it, and it does not write the fields.
 const probe = new FireAudioProbe();
 const smoother = new ProbeSmoother();
 const voice = new FireVoice({ channels: 2 });
-let level = 0.7;
 let logProbe = new URLSearchParams(location.search).has('probe');
 let serial = -1;
 let previousRaw: readonly AudioFieldSample[] | null = null;
 let lastRaw: readonly AudioFieldSample[] | null = null;
 let lastHeard: ReturnType<ProbeSmoother['apply']> | null = null;
 
+function applyLattice(): void {
+  sites = probeLattice(anchor, voxelSize, {
+    count: settings.count,
+    spacingCells: settings.spacing,
+  });
+  positions = sites.map((site) => site.position);
+  smoother.reset();
+  previousRaw = null;
+  lastRaw = null;
+  lastHeard = null;
+  serial = -1;
+  placeMarkers();
+}
+
 const presetName = useTornado ? 'fire tornado' : 'campfire';
-const panel = mountFireAudioPanel(document.body, {
+const panel = mountExperimentPanel(document.body, {
   voice,
-  level,
-  floating: true,
-  probeHud: true,
+  settings,
   logInitially: logProbe,
-  hint: `Level scales every probe. Zero lets the crackle die out. Mute leaves the simulation running. This preset is the ${presetName}. Bottom row of the strip is the emitter.`,
-  onLevel: (next) => {
-    level = next;
-    publish(false);
-  },
+  hint: `Level scales every probe. Zero lets the crackle die out. Mute leaves the simulation running. This preset is the ${presetName}.`,
   onLog: (enabled) => {
     logProbe = enabled;
+  },
+  onChange: (_next, kind) => {
+    if (kind === 'markers') {
+      probeMarkers.visible = settings.showProbes;
+      return;
+    }
+    if (kind === 'lattice' || kind === 'reset') applyLattice();
+    publish(false);
   },
 });
 
 function publish(includeImpulse: boolean): void {
   const cpu = probe.latest;
   if (!cpu || !lastRaw || !lastHeard) return;
+  if (lastRaw.length !== positions.length || lastHeard.length !== positions.length) return;
   voice.setPlume(
     controlsFromField(
       lastHeard,
       lastRaw,
       previousRaw,
       positions,
-      level,
+      settings.level,
       coolingFromProbe(cpu),
       cpu.smoke / 4,
       cpu.gridLimited,
       includeImpulse,
+      settings,
     ),
   );
+  const shape = latticeShape(settings.count);
   panel.setProbes(
     lastHeard.map((sample) => ({
       heat: sample.heat,
-      energy: Math.min(1, Math.max(0, sample.heat / FIELD_HEAT_REFERENCE)),
+      energy: Math.min(1, Math.max(0, (sample.heat * settings.heatGain) / FIELD_HEAT_REFERENCE)),
       speed: sample.speed,
       vorticity: sample.vorticity,
       live: sample.live,
     })),
+    shape.x * shape.z,
   );
 }
+
+// The dock is already on the page. Init stays after it so a GPU failure still leaves the controls up.
+await renderer.init();
+await simulation.initialize(renderer);
 
 // Bursts still change the picture. The voice takes its pop from a heat jump at a probe,
 // not from this key, so a preset with no bursts stays on the plume alone.

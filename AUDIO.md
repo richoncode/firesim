@@ -17,9 +17,11 @@ npm run dev
 
 **Slider, no simulation.** Open <http://127.0.0.1:5173/examples/audio/>. Click **Unmute** or press **U**. **Level** is the energy. Leave it up for a roar plus crackle. Return it to zero and both die out over a few seconds. Mute cuts the output at once and leaves the page up. This is the phase 3 stop line: silent until the gesture, and the slider back at zero lets the crackle die.
 
-**Campfire, sixteen probes.** Open <http://127.0.0.1:5173/examples/playback/>. The page loads `editor/presets/campfire.json`. Unmute, then **Level** scales every probe. The strip at the bottom of the panel is probe energy: four rows, the bottom row on the emitter, the top row up the plume. As heat climbs, the rows light in order. Zero level stops adding energy and each crackle dies out at the fire's cooling rate. Mute cuts the output and leaves the fire running; the strip keeps updating. Check **Log probe**, or open the page with `?probe=1`, for the CPU proxy and one heat line per completed map.
+**Campfire, experiment panel.** Open <http://127.0.0.1:5173/examples/playback/>. The page loads `editor/presets/campfire.json`. A dock sits along the bottom. Click **Unmute** or press **U**, then move **Level**. The default lattice is sixteen probes. The strip is probe energy: four columns, the bottom row on the emitter, the top row up the plume. As heat climbs, the rows light in order. Zero level stops adding energy and each crackle dies out at the fire's cooling rate. Mute cuts the output and leaves the fire running; the strip keeps updating. Check **Log probe**, or open the page with `?probe=1`, for the CPU proxy and one heat line per completed map.
 
-`?preset=tornado` loads the checked-in tornado (`examples/playback/simulation.json`) on the same lattice. Space still detonates that preset's bursts in the picture. The voice does not take a separate pop from the key. A heat jump at a probe is the impulse.
+The dock does not change the solver. **Probes** (4–32) rebuilds the lattice. **Spacing** (2–16 field cells) is the center-to-center gap; 2 is the closest pair that still does not share an edge. The line above those sliders is the shape, for example `2×4×2, 18 cells up`. **Show probe positions** draws a small sphere at each probe and starts on. Turn it off and the picture matches the base sim. **Heat gain**, **Crackle rate**, **Roar mix**, **Motion**, and **Impulse** scale the voice. **Reset** restores the defaults in the table below. Space still detonates a preset's bursts in the picture. The voice does not take a separate pop from the key. A heat jump at a probe is the impulse.
+
+`?preset=tornado` loads the checked-in tornado (`examples/playback/simulation.json`) with the same dock.
 
 After `npm run build`, `npm run preview` serves the same paths. This fork does not have GitHub Pages turned on, so that local server is the preview.
 
@@ -72,7 +74,17 @@ The CPU heat proxy is still logged. It no longer drives the playback voice. The 
 
 ## Sparse probes
 
-Sixteen probes, fixed for the page. Not a sum over the grid, and not a flame-front integral. `probeLattice` in `src/audio/lattice.ts` places them. The anchor is the emission-weighted XZ of the emitters and the lowest emitter Y, taken once at load.
+Not a sum over the grid, and not a flame-front integral. `probeLattice` in `src/audio/lattice.ts` places them. The anchor is the emission-weighted XZ of the emitters and the lowest emitter Y, taken once at load. The default is sixteen probes, 6 field cells apart. The playback dock can change the count (4–32) and the spacing (2–16 cells). A count change rebuilds the lattice, drops the smoother, and ignores a map whose size no longer matches.
+
+`latticeShape` spends extra probes on height:
+
+| Count | X | Y | Z |
+| ----- | - | - | - |
+| Multiple of 4 | 2 | count / 4 | 2 |
+| Other even count | 2 | count / 2 | 1 |
+| Odd count | 1 | count | 1 |
+
+The default 16 is therefore 2×4×2. An odd count is a single vertical line. Spacing 6 puts the default probes here:
 
 | Axis | Count | Placement |
 | ---- | ----- | --------- |
@@ -80,7 +92,7 @@ Sixteen probes, fixed for the page. Not a sum over the grid, and not a flame-fro
 | Z    | 2     | The same straddle. |
 | Y    | 4     | The anchor's field cell, then three more steps up the plume. |
 
-Neighbors are 6 field cells apart, so five cells sit between them. No two probes share an edge. Each probe is moved to the center of its cell so it does not land on a face. The index is layer-major, then X, then Z. Layer 0 is the emitter. Within a layer the first pair is −X and the second pair is +X.
+Neighbors stay at least 2 field cells apart, so they never share an edge. Each probe sits on a cell center. The index is layer-major, then X, then Z. Layer 0 is the emitter. Within a layer the first pair is −X, which is also left to right on the strip. When a layer has only one column, the strip is a single row and the left end is the emitter.
 
 Campfire uses `voxelSize` 0.05, so 6 cells is 0.30 m. The disk emitter is at `[0, 0.27, 0]`. Its field cell is `(0, 5, 0)`. The probes are cells
 
@@ -90,9 +102,9 @@ Campfire uses `voxelSize` 0.05, so 6 cells is 0.30 m. The disk emitter is at `[0
 
 World centers are `(cell + 0.5) * 0.05`. The X pair is one cell off the geometric center of the emitter because that emitter sits on a cell boundary. Both centers still fall inside the 0.8 m disk. The Y stack starts on the emitter and steps up by 0.30 m. A preset with another voxel size keeps the same 6-cell gap, so the probes stay non-adjacent.
 
-`FireSimulation.sampleAudioField` asks `FluidSimulation` for those 16 points after a simulated step. `update` does not call it. The editor never allocates the buffers.
+`FireSimulation.sampleAudioField` asks `FluidSimulation` for the current lattice after a simulated step. `update` does not call it. The editor never allocates the buffers.
 
-The compute kernel `sampleAudioProbes` (`src/engine/shaders/audio-probes.wgsl`) is one workgroup of 16. Each thread:
+The compute kernel `sampleAudioProbes` (`src/engine/shaders/audio-probes.wgsl`) runs workgroups of 16, one thread per probe, at most two workgroups. A thread past the count returns. Each live thread:
 
 | Channel | What it reads |
 | ------- | ------------- |
@@ -101,7 +113,7 @@ The compute kernel `sampleAudioProbes` (`src/engine/shaders/audio-probes.wgsl`) 
 | Vorticity | The curl magnitude of that same neighborhood, central differences over one velocity cell, 1/s. Same shape as the vorticity debug view. |
 | Live | 1 when that field cell's brick has a slot. An empty brick is zero heat and not live. |
 
-The result is 16 vec4s. A copy into one of three `MAP_READ` buffers is mapped after `submit`. The frame does not await the map. If all three buffers are still mapped, that step is skipped and the previous samples stay. The value playback sees lags the dispatch by at least one step. `reset` drops in-flight maps.
+The result is one vec4 per probe, 64 to 512 bytes. A copy into one of three `MAP_READ` buffers is mapped after `submit`. The frame does not await the map. If all three buffers are still mapped, that step is skipped and the previous samples stay. The value playback sees lags the dispatch by at least one step. Changing the count destroys those buffers and drops a map whose byte size no longer matches. `reset` drops in-flight maps.
 
 Playback smooths heat, speed, and vorticity with a one-pole of about 60 ms, then posts. `live` is not smoothed.
 
@@ -109,13 +121,15 @@ Each probe has its own energy and a small PhISEM crackle (`PlumeVoice` in `src/a
 
 | Posted control | Formula |
 | -------------- | ------- |
-| Local energy | `Level * clamp(smoothedHeat / 2, 0, 1)`, times 0.55 when `gridLimited`. That is the attack target. `drive` is the target times the decay. |
-| Motion | `clamp(0.35 * speed / 4 + 0.65 * vorticity / 50, 0, 1)`. It scales the Poisson rate by `0.25 + 0.75 * motion` and opens the roar's lowpass. |
-| Impulse | On a new map, if unsmoothed heat rose by more than 0.35 since the previous map, `Level * clamp(rise / 1.5, 0, 1)` is added to that probe once. The first map has no previous sample. A Level move does not repeat it. |
+| Local energy | `Level * clamp(smoothedHeat * heatGain / 2, 0, 1)`, times 0.55 when `gridLimited`. That is the attack target. `drive` is the target times the decay. **Heat gain** defaults to 1. |
+| Motion | `clamp(0.35 * speed / 4 + 0.65 * vorticity / 50, 0, 1)`. The Poisson rate is multiplied by `max(0, 1 - influence + influence * motion)`. **Motion** defaults to 0.75, which is the old `0.25 + 0.75 * motion`. At 0 the rate ignores speed and vorticity. At 1 a still probe goes quiet. The same motion opens the roar's lowpass. |
+| Crackle rate | Multiplies the 70/s Poisson rate. Default 1. The slider runs 0–3. |
+| Roar mix | 0 is crackle only, 1 is roar only. 0.5 keeps the previous balance: roar gain and crackle gain are both unchanged. |
+| Impulse | On a new map, if unsmoothed heat rose by more than `0.35 / sensitivity` since the previous map, `Level * clamp(rise / (1.5 / sensitivity), 0, 1)` is added to that probe once. **Impulse** defaults to 1. 0 disables pops. The first map, and the first map after a relayout, has no previous sample. A Level move does not repeat it. |
 | Smoke | The CPU smoke-rate proxy, `clamp(smoke / 4, 0, 1)`, darkens the shared roar. Field X on campfire is production, not density (`smokeDivisor` is 2). |
 | Pan | `clamp(worldX / 0.6, -1, 1)`. |
 
-Level is the master scale. Unmute and the U key are the gesture, unchanged. The strip shows each probe's energy (the smoothed heat over the same reference of 2) and the mean heat, speed, and vorticity of the live probes.
+Level is the master scale, on the left of the dock. Unmute and the U key are the gesture, unchanged. Orange spheres mark each probe in the scene while **Show probe positions** is on. They are not colliders and not emitters. The strip shows each probe's energy (smoothed heat times heat gain, over the same reference of 2) and the mean heat, speed, and vorticity of the live probes. **Reset** restores Level 0.7, 16 probes, spacing 6, markers on, and the knob defaults above.
 
 The slider page does not send probes. It is still the mono `PhisemVoice`.
 
@@ -205,7 +219,7 @@ Rendering and lighting options (`brightness`, `opacity`, `temperature`, `color`,
 
 ## How parameters map to sound
 
-Phase 3 wired the CPU rows into one voice. Playback now uses the sparse lattice for heat, speed, and vorticity. That is a read of 16 cells and their velocity neighbors, not the full-grid reduction this table originally left open.
+Phase 3 wired the CPU rows into one voice. Playback now uses the sparse lattice for heat, speed, and vorticity. That is a read of those cells and their velocity neighbors, not the full-grid reduction this table originally left open. The default is 16 cells.
 
 | Sim signal                                                     | Synth control                                                                                                                                                                |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -226,7 +240,7 @@ The editor inspector still does not run audio. The seam is the playback loop:
 examples/playback/main.ts
   simulation.update(delta)
   sample = probe.capture(public CPU state)          // null unless a step ran
-  if sample: read = simulation.sampleAudioField(16) // lagged map, or null
+  if sample: read = simulation.sampleAudioField(lattice) // lagged map, or null
   if a new map: smooth, post the plume, paint the strip
   renderer.render(...)
 ```
@@ -235,5 +249,5 @@ examples/playback/main.ts
 
 ## What is next
 
-1. **Phase 5, frame time.** Record frame time and `droppedTime` with the voice muted and `sampleAudioField` not called, then with the lattice on. The pass is 16 threads and a 256-byte map.
+1. **Phase 5, frame time.** Record frame time and `droppedTime` with the voice muted and `sampleAudioField` not called, then with the lattice on. The default pass is 16 threads and a 256-byte map. The dock can raise that to 32 threads and 512 bytes.
 2. **Phases 6 and 7** only after that note exists. Panning is world X of each probe, not the phase 2 centroid. A PR to `dgreenheck/threejs-fire-pro` waits on that, and only if the branch is still MIT and free of unrelated editor churn.

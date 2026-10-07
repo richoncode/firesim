@@ -1,3 +1,4 @@
+import { AUDIO_PROBE_MAX } from '../engine/audioProbes.ts';
 import type { PlumeControls } from './mapping.ts';
 import { Biquad } from './phisem.ts';
 
@@ -7,7 +8,7 @@ const CRACKLE_GAIN = 0.22;
 const ROAR_GAIN = 0.8;
 
 /**
- * Sixteen small crackle voices plus one shared roar.
+ * Up to 32 small crackle voices plus one shared roar.
  * Each probe keeps its own energy. A rising target approaches at `ATTACK` (about 8/s)
  * so a plume that reaches the next probe a fraction of a second later is still a
  * separate onset. A falling target decays at the posted cooling, which is the fire's
@@ -20,16 +21,22 @@ export class PlumeVoice {
   private readonly roar: RoarBed;
   private cooling = 1;
   private smoke = 0;
+  private crackleScale = 1;
+  private roarMix = 0.5;
+  private motionInfluence = 0.75;
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate > 0 ? sampleRate : 48000;
-    this.probes = Array.from({ length: 16 }, () => new ProbeCrackle(this.sampleRate));
+    this.probes = Array.from({ length: AUDIO_PROBE_MAX }, () => new ProbeCrackle(this.sampleRate));
     this.roar = new RoarBed(this.sampleRate);
   }
 
   setControls(controls: PlumeControls): void {
     this.cooling = Math.max(0.05, finite(controls.cooling, 1));
     this.smoke = clamp01(finite(controls.smoke, 0));
+    this.crackleScale = clampRange(finite(controls.crackleScale, 1), 0, 4);
+    this.roarMix = clamp01(finite(controls.roarMix, 0.5));
+    this.motionInfluence = clamp01(finite(controls.motionInfluence, 0.75));
     const probes = Array.isArray(controls.probes) ? controls.probes : [];
     for (let i = 0; i < this.probes.length; i++) {
       const probe = probes[i];
@@ -70,7 +77,14 @@ export class PlumeVoice {
       let crackleLeft = 0;
       let crackleRight = 0;
       for (const probe of this.probes) {
-        const sample = probe.tick(dt, decay, attack, this.cooling);
+        const sample = probe.tick(
+          dt,
+          decay,
+          attack,
+          this.cooling,
+          this.crackleScale,
+          this.motionInfluence,
+        );
         crackleLeft += sample.left;
         crackleRight += sample.right;
         if (probe.live && (probe.energy > 0.02 || probe.drive > 1e-4)) {
@@ -84,12 +98,13 @@ export class PlumeVoice {
       }
       const unit = burning > 0 ? Math.min(1, energy / burning) : 0;
       const brightness = burning > 0 ? motion / burning : 0;
-      const roar = this.roar.tick(dt, unit, brightness, this.smoke) * ROAR_GAIN;
+      const roar = this.roar.tick(dt, unit, brightness, this.smoke) * ROAR_GAIN * this.roarMix * 2;
+      const crackleGain = CRACKLE_GAIN * (1 - this.roarMix) * 2;
       // Equal-power pan from the burning probes' world X. A balanced lattice stays centered.
       const weight = panWeight > 0 ? panMoment / panWeight : 0;
       const angle = ((clampSigned(weight) + 1) * Math.PI) / 4;
-      left[i] = Math.tanh((roar * Math.cos(angle) + crackleLeft * CRACKLE_GAIN) * 1.25);
-      right[i] = Math.tanh((roar * Math.sin(angle) + crackleRight * CRACKLE_GAIN) * 1.25);
+      left[i] = Math.tanh((roar * Math.cos(angle) + crackleLeft * crackleGain) * 1.25);
+      right[i] = Math.tanh((roar * Math.sin(angle) + crackleRight * crackleGain) * 1.25);
     }
     if (frames < left.length) left.fill(0, frames);
     if (frames < right.length) right.fill(0, frames);
@@ -134,6 +149,8 @@ class ProbeCrackle {
     decay: number,
     attack: number,
     cooling: number,
+    crackleScale: number,
+    motionInfluence: number,
   ): { left: number; right: number } {
     if (this.impulse > 0) {
       this.energy = Math.min(1.5, this.energy + this.impulse);
@@ -146,7 +163,8 @@ class ProbeCrackle {
     if (this.energy > 1.5) this.energy = 1.5;
     if (this.energy < 1e-6) this.energy = 0;
     const unit = this.energy > 1 ? 1 : this.energy;
-    const rate = CRACKLE_RATE * unit * unit * (0.25 + 0.75 * this.motion);
+    const follow = 1 - motionInfluence + motionInfluence * this.motion;
+    const rate = CRACKLE_RATE * crackleScale * unit * unit * Math.max(0, follow);
     if (rate > 0 && Math.random() < 1 - Math.exp(-rate * dt)) {
       this.envelope += 0.35 + 0.65 * Math.random();
     }
@@ -226,6 +244,13 @@ function finite(value: number, fallback: number): number {
 function clamp01(value: number): number {
   if (!(value > 0)) return 0;
   return value > 1 ? 1 : value;
+}
+
+function clampRange(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
 }
 
 function clampSigned(value: number): number {

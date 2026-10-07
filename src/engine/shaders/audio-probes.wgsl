@@ -1,4 +1,4 @@
-// Sparse audio probes. One thread per probe, dispatched as a single workgroup of 16.
+// Sparse audio probes. One thread per probe, in workgroups of 16 (up to 32 probes).
 // Each probe reads one heat cell and the velocity cell under it plus that cell's six
 // neighbors. Nothing here sums the grid, and nothing here writes a field.
 @group(0) @binding(80) var<storage, read> audioProbePositions: array<vec4f>;
