@@ -34,7 +34,7 @@ export interface ExperimentPanel {
   setProbes(samples: readonly ProbeHudSample[], columns: number): void;
 }
 
-/** Bottom controls for the playback page. Unmute and U live here. */
+/** Slim left-side controls for the playback page. Unmute and U live here. */
 export function mountExperimentPanel(
   parent: ParentNode,
   options: ExperimentPanelOptions,
@@ -45,8 +45,6 @@ export function mountExperimentPanel(
   dock.className = 'fire-experiment';
   dock.setAttribute('aria-label', 'Fire audio experiment');
 
-  const side = document.createElement('div');
-  side.className = 'fire-experiment-side';
   const credit = document.createElement('p');
   credit.className = 'fire-experiment-credit';
   credit.textContent = 'Synthesized fire. The simulation is Daniel Greenheck’s Fire Pro.';
@@ -100,8 +98,6 @@ export function mountExperimentPanel(
   summary.className = 'fire-experiment-summary';
   summary.textContent = 'Waiting for probes.';
   hud.append(caption, bars, summary);
-
-  side.append(credit, row, level.root, markers, reset, hint, hud);
 
   const knobs = document.createElement('div');
   knobs.className = 'fire-experiment-knobs';
@@ -196,7 +192,7 @@ export function mountExperimentPanel(
     motionKnob.root,
     impulseKnob.root,
   );
-  dock.append(side, knobs);
+  dock.append(credit, row, level.root, knobs, markers, reset, hud, hint);
   if (options.onLog) {
     const logLabel = document.createElement('label');
     logLabel.className = 'fire-experiment-check fire-experiment-log';
@@ -205,7 +201,7 @@ export function mountExperimentPanel(
     box.checked = options.logInitially ?? false;
     logLabel.append(box, document.createTextNode(' Log probe'));
     box.addEventListener('change', () => options.onLog?.(box.checked));
-    side.append(logLabel);
+    dock.append(logLabel);
   }
   parent.append(dock);
   paintShape();
@@ -401,36 +397,37 @@ function ensureStyle(): void {
   style.id = 'fire-experiment-style';
   style.textContent = `
     .fire-experiment {
-      position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 3;
-      display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-      gap: 12px 18px; padding: 10px 14px 12px; border-radius: 12px;
+      position: fixed; left: 10px; top: 10px; z-index: 3;
+      width: 212px; max-height: calc(100vh - 20px); box-sizing: border-box;
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 8px 10px 10px; border-radius: 10px;
       background: rgba(18, 19, 22, 0.92); color: #e7e4df;
-      font: 12px/1.35 ui-sans-serif, system-ui, sans-serif;
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-      max-height: min(46vh, 340px); overflow: auto;
+      font: 11px/1.3 ui-sans-serif, system-ui, sans-serif;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      overflow: auto;
     }
     .fire-experiment-credit, .fire-experiment-hint, .fire-experiment-shape,
     .fire-experiment-summary { margin: 0; color: #b7b3ac; }
-    .fire-experiment-hint, .fire-experiment-summary { margin-top: 6px; }
-    .fire-experiment-shape { grid-column: 1 / -1; font-variant-numeric: tabular-nums; }
-    .fire-experiment-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+    .fire-experiment-hint { margin-top: 2px; }
+    .fire-experiment-shape, .fire-experiment-summary { font-variant-numeric: tabular-nums; }
+    .fire-experiment-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
     .fire-experiment button {
       font: inherit; background: #e7e4df; color: #15161a; border: 0;
-      border-radius: 999px; padding: 5px 12px; cursor: pointer;
+      border-radius: 999px; padding: 4px 10px; cursor: pointer;
     }
     .fire-experiment button:disabled { opacity: 0.6; cursor: default; }
-    .fire-experiment-reset { margin-top: 8px; background: transparent; color: #e7e4df; border: 1px solid #5c5a55; }
-    .fire-experiment-knobs {
-      display: grid; grid-template-columns: repeat(4, minmax(108px, 1fr));
-      gap: 8px 12px; align-content: start;
+    .fire-experiment-reset {
+      background: transparent; color: #e7e4df; border: 1px solid #5c5a55;
+      align-self: stretch;
     }
-    .fire-experiment-knobs label, .fire-experiment-side > label:not(.fire-experiment-check) {
-      display: flex; flex-direction: column; gap: 3px; color: #b7b3ac;
+    .fire-experiment-knobs { display: flex; flex-direction: column; gap: 6px; }
+    .fire-experiment-knobs label, .fire-experiment > label:not(.fire-experiment-check) {
+      display: flex; flex-direction: column; gap: 2px; color: #b7b3ac;
     }
     .fire-experiment label span { display: flex; justify-content: space-between; gap: 8px; }
-    .fire-experiment input[type="range"] { width: 100%; }
-    .fire-experiment-check { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: #e7e4df; }
-    .fire-experiment-hud { margin-top: 8px; }
+    .fire-experiment input[type="range"] { width: 100%; margin: 0; }
+    .fire-experiment-check { display: flex; align-items: center; gap: 6px; color: #e7e4df; }
+    .fire-experiment-hud { display: flex; flex-direction: column; gap: 4px; }
     .fire-experiment-hud-row {
       display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 3px; margin-top: 3px;
