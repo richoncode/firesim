@@ -19,7 +19,7 @@ npm run dev
 
 **Campfire, experiment panel.** Open <http://127.0.0.1:5173/examples/playback/>. The page loads `editor/presets/campfire.json`. A slim dock sits on the left. Click **Unmute** or press **U**, then move **Level**. The default lattice is sixteen probes. The strip is probe energy: four columns, the bottom row on the emitter, the top row up the plume. As heat climbs, the rows light in order. Zero level stops adding energy and each crackle dies out at the fire's cooling rate. Mute cuts the output and leaves the fire running; the strip keeps updating. Check **Log probe**, or open the page with `?probe=1`, for the CPU proxy and one heat line per completed map.
 
-The dock does not change the solver. **Probes** (4–32) rebuilds the lattice. **Spacing** (2–16 field cells) is the center-to-center gap; 2 is the closest pair that still does not share an edge. The line above those sliders is the shape, for example `2×4×2, 18 cells up`. **Show probe positions** draws a small sphere at each probe and starts on. Turn it off and the picture matches the base sim. **Heat gain**, **Crackle rate** (0–0.5×), **Crackle pitch variation**, **Crackle volume variation**, **Roar mix**, **Motion**, and **Impulse** scale the voice. **Reset** restores the defaults in the table below. Space still detonates a preset's bursts in the picture. The voice does not take a separate pop from the key. A heat jump at a probe is the impulse.
+The dock does not change the solver. **Probe layout** is Box, Vertical, or Horizontal. Box is the default. **Probes** (4–32) and **Spacing** (2–16 field cells) apply to every layout and rebuild it, the same as changing the layout. Spacing is the center-to-center gap; 2 is the closest pair that still does not share an edge. The line above those controls is the shape, for example `Box 2×4×2, 18 cells up`. **Show probe positions** draws a small sphere at each probe and starts on. Turn it off and the picture matches the base sim. **Heat gain**, **Crackle rate** (0–0.5×), **Crackle pitch variation**, **Crackle volume variation**, **Roar mix**, **Motion**, and **Impulse** scale the voice. **Reset** restores the defaults in the table below. Space still detonates a preset's bursts in the picture. The voice does not take a separate pop from the key. A heat jump at a probe is the impulse.
 
 `?preset=tornado` loads the checked-in tornado (`examples/playback/simulation.json`) with the same dock.
 
@@ -74,9 +74,9 @@ The CPU heat proxy is still logged. It no longer drives the playback voice. The 
 
 ## Sparse probes
 
-Not a sum over the grid, and not a flame-front integral. `probeLattice` in `src/audio/lattice.ts` places them. The anchor is the emission-weighted XZ of the emitters and the lowest emitter Y, taken once at load. The default is sixteen probes, 6 field cells apart. The playback dock can change the count (4–32) and the spacing (2–16 cells). A count change rebuilds the lattice, drops the smoother, and ignores a map whose size no longer matches.
+Not a sum over the grid, and not a flame-front integral. `probeLattice` in `src/audio/lattice.ts` places them. The anchor is the emission-weighted XZ of the emitters and the lowest emitter Y, taken once at load. The default is sixteen probes, Box layout, 6 field cells apart. The playback dock can change the layout, the count (4–32), and the spacing (2–16 cells). Any of those rebuilds the lattice, moves the markers, drops the smoother, and ignores a map whose size no longer matches.
 
-`latticeShape` spends extra probes on height:
+**Box** spends extra probes on height:
 
 | Count | X | Y | Z |
 | ----- | - | - | - |
@@ -84,7 +84,9 @@ Not a sum over the grid, and not a flame-front integral. `probeLattice` in `src/
 | Other even count | 2 | count / 2 | 1 |
 | Odd count | 1 | count | 1 |
 
-The default 16 is therefore 2×4×2. An odd count is a single vertical line. Spacing 6 puts the default probes here:
+**Vertical** is `1 × count × 1`, one column on the anchor cell, the same upward step as Box. **Horizontal** is one sheet on the anchor's field cell, the same height as the bottom of the Box. The count becomes the closest X×Z rectangle that is at least as wide as it is deep. A prime count is a line across X. On campfire that cell is Y 5, world center 0.275 m, a quarter of a cell above the disk at 0.27 m.
+
+The default 16 is therefore Box 2×4×2. An odd Box count is a single vertical line. Spacing 6 puts the default probes here:
 
 | Axis | Count | Placement |
 | ---- | ----- | --------- |
@@ -92,7 +94,7 @@ The default 16 is therefore 2×4×2. An odd count is a single vertical line. Spa
 | Z    | 2     | The same straddle. |
 | Y    | 4     | The anchor's field cell, then three more steps up the plume. |
 
-Neighbors stay at least 2 field cells apart, so they never share an edge. Each probe sits on a cell center. The index is layer-major, then X, then Z. Layer 0 is the emitter. Within a layer the first pair is −X, which is also left to right on the strip. When a layer has only one column, the strip is a single row and the left end is the emitter.
+Neighbors stay at least 2 field cells apart, so they never share an edge. Each probe sits on a cell center. The index is layer-major, then X, then Z. Layer 0 is the emitter. Within a layer the first pair is −X, which is also left to right on the strip. When a layer has only one column, the strip is a single row and the left end is the emitter (Vertical and an odd Box). Horizontal with more than one Z draws a grid whose bottom row is −X. A Horizontal line says left is −X. **Reset** restores Box.
 
 Campfire uses `voxelSize` 0.05, so 6 cells is 0.30 m. The disk emitter is at `[0, 0.27, 0]`. Its field cell is `(0, 5, 0)`. The probes are cells
 

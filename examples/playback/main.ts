@@ -7,6 +7,7 @@ import {
 } from '../../src/audio/experiment-panel.ts';
 import {
   latticeAnchor,
+  latticeHudColumns,
   latticeShape,
   PROBE_COUNT_MAX,
   probeLattice,
@@ -136,6 +137,7 @@ const settings = defaultExperimentSettings(0.7);
 let sites = probeLattice(anchor, voxelSize, {
   count: settings.count,
   spacingCells: settings.spacing,
+  layout: settings.layout,
 });
 let positions = sites.map((site) => site.position);
 
@@ -162,7 +164,7 @@ const markerMeshes = Array.from({ length: PROBE_COUNT_MAX }, () => {
 scene.add(probeMarkers);
 
 function placeMarkers(): void {
-  const shape = latticeShape(settings.count);
+  const shape = latticeShape(settings.count, settings.layout);
   probeMarkers.visible = settings.showProbes;
   markerMeshes.forEach((mesh, index) => {
     const site = sites[index];
@@ -190,6 +192,7 @@ function applyLattice(): void {
   sites = probeLattice(anchor, voxelSize, {
     count: settings.count,
     spacingCells: settings.spacing,
+    layout: settings.layout,
   });
   positions = sites.map((site) => site.position);
   smoother.reset();
@@ -237,7 +240,7 @@ function publish(includeImpulse: boolean): void {
       settings,
     ),
   );
-  const shape = latticeShape(settings.count);
+  const shape = latticeShape(settings.count, settings.layout);
   panel.setProbes(
     lastHeard.map((sample) => ({
       heat: sample.heat,
@@ -246,7 +249,7 @@ function publish(includeImpulse: boolean): void {
       vorticity: sample.vorticity,
       live: sample.live,
     })),
-    shape.x * shape.z,
+    latticeHudColumns(shape, settings.layout),
   );
 }
 

@@ -3,9 +3,11 @@ import {
   latticeShape,
   PROBE_COUNT_MAX,
   PROBE_COUNT_MIN,
+  PROBE_LAYOUT_DEFAULT,
   PROBE_SPACING_DEFAULT,
   PROBE_SPACING_MAX,
   PROBE_SPACING_MIN,
+  type ProbeLayout,
 } from './lattice.ts';
 import { CRACKLE_SCALE_MAX, FIELD_TUNING_DEFAULTS, type FieldTuning } from './mapping.ts';
 import type { ProbeHudSample } from './panel.ts';
@@ -14,6 +16,7 @@ import type { FireVoice } from './voice.ts';
 export interface ExperimentSettings extends FieldTuning {
   count: number;
   spacing: number;
+  layout: ProbeLayout;
   showProbes: boolean;
   level: number;
 }
@@ -103,6 +106,11 @@ export function mountExperimentPanel(
   knobs.className = 'fire-experiment-knobs';
   const shape = document.createElement('p');
   shape.className = 'fire-experiment-shape';
+  const layout = layoutControl(settings.layout, (value) => {
+    settings.layout = value;
+    paintShape();
+    options.onChange(settings, 'lattice');
+  });
   const countKnob = knob('Probes', {
     min: PROBE_COUNT_MIN,
     max: PROBE_COUNT_MAX,
@@ -206,6 +214,7 @@ export function mountExperimentPanel(
   });
   knobs.append(
     shape,
+    layout.root,
     countKnob.root,
     spacingKnob.root,
     heatKnob.root,
@@ -267,6 +276,7 @@ export function mountExperimentPanel(
     level.set(settings.level);
     countKnob.set(settings.count);
     spacingKnob.set(settings.spacing);
+    layout.set(settings.layout);
     heatKnob.set(settings.heatGain);
     crackleKnob.set(settings.crackleScale);
     pitchKnob.set(settings.pitchVariation);
@@ -279,20 +289,20 @@ export function mountExperimentPanel(
     options.onChange(settings, 'reset');
   });
 
-  let hudColumns = -1;
+  let hudKey = '';
   let fills: HTMLElement[] = [];
 
   return {
     setProbes(samples, columns) {
       const width = Math.max(1, columns);
-      if (samples.length !== fills.length || width !== hudColumns) {
-        hudColumns = width;
+      const key = `${settings.layout}:${samples.length}:${width}`;
+      if (key !== hudKey) {
+        hudKey = key;
         fills = [];
         bars.replaceChildren();
         const strip = width <= 1;
-        caption.textContent = strip
-          ? 'Probe energy. Left is the emitter.'
-          : 'Probe energy. The bottom row is the emitter.';
+        const shapeNow = latticeShape(settings.count, settings.layout);
+        caption.textContent = hudCaption(settings.layout, width, shapeNow.y);
         if (strip) {
           const line = document.createElement('div');
           line.className = 'fire-experiment-hud-row';
@@ -340,14 +350,64 @@ export function mountExperimentPanel(
   };
 
   function paintShape(): void {
-    shape.textContent = formatLatticeShape(latticeShape(settings.count), settings.spacing);
+    shape.textContent = formatLatticeShape(
+      latticeShape(settings.count, settings.layout),
+      settings.spacing,
+      settings.layout,
+    );
   }
+}
+
+function hudCaption(layout: ProbeLayout, columns: number, layers: number): string {
+  if (layout === 'horizontal') {
+    return columns <= 1 ? 'Probe energy. Left is −X.' : 'Probe energy. The bottom row is −X.';
+  }
+  if (columns <= 1 && layers > 1) return 'Probe energy. Left is the emitter, right is the top.';
+  if (columns <= 1) return 'Probe energy. Left is the emitter.';
+  return 'Probe energy. The bottom row is the emitter.';
+}
+
+function layoutControl(
+  initial: ProbeLayout,
+  onChange: (layout: ProbeLayout) => void,
+): { root: HTMLFieldSetElement; set: (layout: ProbeLayout) => void } {
+  const root = document.createElement('fieldset');
+  root.className = 'fire-experiment-layout';
+  const legend = document.createElement('legend');
+  legend.textContent = 'Probe layout';
+  root.append(legend);
+  const inputs: HTMLInputElement[] = [];
+  for (const option of [
+    ['horizontal', 'Horizontal'],
+    ['vertical', 'Vertical'],
+    ['box', 'Box'],
+  ] as const) {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'fire-probe-layout';
+    input.value = option[0];
+    input.checked = option[0] === initial;
+    label.append(input, document.createTextNode(` ${option[1]}`));
+    input.addEventListener('change', () => {
+      if (input.checked) onChange(option[0]);
+    });
+    inputs.push(input);
+    root.append(label);
+  }
+  return {
+    root,
+    set(layout) {
+      for (const input of inputs) input.checked = input.value === layout;
+    },
+  };
 }
 
 export function defaultExperimentSettings(level = 0.7): ExperimentSettings {
   return {
     count: 16,
     spacing: PROBE_SPACING_DEFAULT,
+    layout: PROBE_LAYOUT_DEFAULT,
     showProbes: true,
     level,
     ...FIELD_TUNING_DEFAULTS,
@@ -447,8 +507,16 @@ function ensureStyle(): void {
       align-self: stretch;
     }
     .fire-experiment-knobs { display: flex; flex-direction: column; gap: 6px; }
+    .fire-experiment-layout {
+      border: 0; margin: 0; padding: 0;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .fire-experiment-layout legend { padding: 0; color: #b7b3ac; }
     .fire-experiment-knobs label, .fire-experiment > label:not(.fire-experiment-check) {
       display: flex; flex-direction: column; gap: 2px; color: #b7b3ac;
+    }
+    .fire-experiment-layout label {
+      display: flex; flex-direction: row; align-items: center; gap: 6px; color: #e7e4df;
     }
     .fire-experiment label span { display: flex; justify-content: space-between; gap: 8px; }
     .fire-experiment label span > span:first-child { min-width: 0; }

@@ -2,15 +2,19 @@ import { AUDIO_PROBE_COUNT, AUDIO_PROBE_MAX, AUDIO_PROBE_MIN } from '../engine/a
 
 /**
  * Sparse lattice, not a grid sum.
- * The default is 2×4×2. `latticeShape` changes X, Y, and Z with the probe count:
- * a multiple of 4 is 2 × (count/4) × 2, an even count is 2 × (count/2) × 1, and an
- * odd count is one vertical line. Extra probes go up the plume, not out into empty air.
+ * `box` (the default) is 2×4×2 at 16 probes. `latticeShape` then spends extra probes on
+ * height: a multiple of 4 is 2 × (count/4) × 2, an even count is 2 × (count/2) × 1, and
+ * an odd count is one vertical line.
+ * `vertical` is always one column on the anchor, stepping up by the spacing.
+ * `horizontal` is one flat sheet on the anchor's field cell (the emitter, just above a
+ * disk that sits on the cell boundary). The count splits into the closest X×Z rectangle,
+ * at least as wide as it is deep. A prime count is a line across X.
  * Neighbors are `spacingCells` field cells apart (at least 2, so they never share an edge).
- * X and Z straddle the anchor when that axis has two probes. Y starts on the anchor's
- * field cell and steps upward. Each probe sits on a cell center.
- * Index is layer-major, then X, then Z. Layer 0 is the emitter. Within a layer the
- * first probes are −X, which is also left to right on the HUD.
+ * Each probe sits on a cell center. Index is layer-major, then X, then Z. Layer 0 is the
+ * emitter. Within a layer the first probes are −X.
  */
+export type ProbeLayout = 'horizontal' | 'vertical' | 'box';
+export const PROBE_LAYOUT_DEFAULT: ProbeLayout = 'box';
 export const PROBE_COUNT = AUDIO_PROBE_COUNT;
 export const PROBE_COUNT_MIN = AUDIO_PROBE_MIN;
 export const PROBE_COUNT_MAX = AUDIO_PROBE_MAX;
@@ -42,29 +46,53 @@ export interface ProbeSite {
 }
 
 /** How a probe count splits across X, Y, and Z. Count is clamped to 4–32. */
-export function latticeShape(count: number): LatticeShape {
+export function latticeShape(
+  count: number,
+  layout: ProbeLayout = PROBE_LAYOUT_DEFAULT,
+): LatticeShape {
   const n = clampInt(count, PROBE_COUNT_MIN, PROBE_COUNT_MAX);
+  if (layout === 'vertical') return { x: 1, y: n, z: 1 };
+  if (layout === 'horizontal') return horizontalShape(n);
   if (n % 4 === 0) return { x: 2, y: n / 4, z: 2 };
   if (n % 2 === 0) return { x: 2, y: n / 2, z: 1 };
   return { x: 1, y: n, z: 1 };
 }
 
-/** "2×4×2, 18 cells up" for the experiment panel. */
-export function formatLatticeShape(shape: LatticeShape, spacingCells: number): string {
+/** Columns in the energy strip. Horizontal uses Z, so each row is one X line. */
+export function latticeHudColumns(
+  shape: LatticeShape,
+  layout: ProbeLayout = PROBE_LAYOUT_DEFAULT,
+): number {
+  if (layout === 'horizontal') return Math.max(1, shape.z);
+  return Math.max(1, shape.x * shape.z);
+}
+
+/** "Box 2×4×2, 18 cells up" for the experiment panel. */
+export function formatLatticeShape(
+  shape: LatticeShape,
+  spacingCells: number,
+  layout: ProbeLayout = PROBE_LAYOUT_DEFAULT,
+): string {
   const spacing = clampInt(spacingCells, PROBE_SPACING_MIN, PROBE_SPACING_MAX);
+  const dims = `${shape.x}×${shape.y}×${shape.z}`;
+  if (layout === 'horizontal') return `Horizontal ${dims}, on the emitter`;
   const rise = (shape.y - 1) * spacing;
-  return `${shape.x}×${shape.y}×${shape.z}, ${rise} cells up`;
+  const name = layout === 'vertical' ? 'Vertical' : 'Box';
+  return `${name} ${dims}, ${rise} cells up`;
 }
 
 /** Anchor is the emitter base: XZ on the fire, Y at its lowest point. World meters. */
 export function probeLattice(
   anchor: readonly [number, number, number],
   voxelSize: number,
-  options?: { count?: number; spacingCells?: number },
+  options?: { count?: number; spacingCells?: number; layout?: ProbeLayout },
 ): ProbeSite[] {
   if (!(voxelSize > 0) || !Number.isFinite(voxelSize))
     throw new Error('Probe lattice needs a positive voxel size.');
-  const shape = latticeShape(options?.count ?? PROBE_COUNT);
+  const shape = latticeShape(
+    options?.count ?? PROBE_COUNT,
+    options?.layout ?? PROBE_LAYOUT_DEFAULT,
+  );
   const spacing = clampInt(
     options?.spacingCells ?? PROBE_SPACING_DEFAULT,
     PROBE_SPACING_MIN,
@@ -122,11 +150,32 @@ export function latticeAnchor(
   return [x / weight, y, z / weight];
 }
 
-/** Two probes sit `spacing` cells apart, straddling the anchor. One probe sits on it. */
+/**
+ * `count` cells centered on the anchor, `spacing` apart.
+ * Two probes still straddle it: the first is `floor(spacing / 2)` cells to the − side.
+ */
 function spread(anchorCell: number, count: number, spacing: number): number[] {
   if (count <= 1) return [anchorCell];
-  const left = anchorCell - Math.floor(spacing / 2);
-  return [left, left + spacing];
+  const left = anchorCell - Math.floor(((count - 1) * spacing) / 2);
+  return Array.from({ length: count }, (_, index) => left + index * spacing);
+}
+
+/** Closest rectangle, at least as wide in X as in Z. One row when the count is prime. */
+function horizontalShape(count: number): LatticeShape {
+  let x = count;
+  let z = 1;
+  let score = count;
+  for (let depth = 1; depth * depth <= count; depth++) {
+    if (count % depth !== 0) continue;
+    const across = count / depth;
+    const next = across - depth;
+    if (next < score) {
+      x = across;
+      z = depth;
+      score = next;
+    }
+  }
+  return { x, y: 1, z };
 }
 
 function clampInt(value: number, min: number, max: number): number {
